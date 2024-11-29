@@ -7,7 +7,7 @@ Han Seokhui (Team Leader)
 
 Kim Chungwon (Team Member)
 
-Bagas Tegar B. (Team Member from Indonesia)
+Bagas Tegar B. (Team Member)
 
 Rules for creating & maintaining branches
 ----------------
