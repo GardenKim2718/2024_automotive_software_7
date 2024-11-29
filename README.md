@@ -7,11 +7,11 @@ Han Seokhui (Team Leader)
 
 Kim Chungwon (Team Member)
 
+BHADRAVYATA¸ BAGAS TEGAR (Team Member)
+
 Rules for creating & maintaining branches
 ----------------
 1. Create a new branch whenever making major changes within code or adding functions.
 2. Set the branch name that can represent the new functionality. (eg: Kalman Filter, Time-to-Collision)
 3. Request compare & pull after informing other team mates and it is confirmed that the change is stable.
 4. The main branch should be remained as our 'stable' version of our project.
-
-BHADRAVYATA¸ BAGAS TEGAR (Team Member)
