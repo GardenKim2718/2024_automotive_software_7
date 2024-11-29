@@ -1,0 +1,2 @@
+MissionObject[] objects
+MissionRegion[] regions

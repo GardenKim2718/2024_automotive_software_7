@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="ns1" default="ego"/>
+
+  <!-- Loop Rate -->   
+  <arg name="loop_rate_vehicle" default="100.0"/>
+  <arg name="loop_rate_lane_detection" default="30.0"/>
+  <arg name="loop_rate_display" default="100.0"/>
+
+  <!-- LaneDetection -->
+  <arg name="ROI_front" default="20.0"/>
+  <arg name="ROI_rear" default="5.0"/>
+  <arg name="ROI_left" default="4.0"/>
+  <arg name="ROI_right" default="4.0"/>
+
+  <!-- Simulator -->
+  <arg name="init_x" default="0.0"/>
+  <arg name="init_y" default="0.0"/>
+  <arg name="init_pitch" default="0.0"/>
+  <arg name="init_yaw" default="0.0"/>
+  <arg name="init_vel" default="0.0"/>
+  <arg name="uphill_slope" default="10.0"/>
+  <arg name="downhill_slope" default="-10.0"/>
+
+  <group>
+    <node pkg="simulator" exec="vehicle" name="vehicle" namespace="$(var ns1)" output="screen">
+      <param name="vehicle/ns" value="$(var ns1)"/>
+      <param name="vehicle/loop_rate_hz" value="$(var loop_rate_vehicle)"/>
+      <param name="vehicle/init_x" value="$(var init_x)"/>
+      <param name="vehicle/init_y" value="$(var init_y)"/>
+      <param name="vehicle/init_pitch" value="$(var init_pitch)"/>
+      <param name="vehicle/init_yaw" value="$(var init_yaw)"/>
+      <param name="vehicle/init_vel" value="$(var init_vel)"/>
+      <param name="vehicle/uphill_slope" value="$(var uphill_slope)"/>
+      <param name="vehicle/downhill_slope" value="$(var downhill_slope)"/>
+    </node>
+    
+    <node pkg="simulator" exec="lane_detection" name="lane_detection" namespace="$(var ns1)" output="screen">
+      <param name="lane_detection/ns" value="$(var ns1)"/>
+      <param name="lane_detection/loop_rate_hz" value="$(var loop_rate_lane_detection)"/>
+      <param name="lane_detection/ROI_front" value="$(var ROI_front)"/>
+      <param name="lane_detection/ROI_rear" value="$(var ROI_rear)"/>
+      <param name="lane_detection/ROI_left" value="$(var ROI_left)"/>
+      <param name="lane_detection/ROI_right" value="$(var ROI_right)"/>
+    </node>
+
+    <node pkg="simulator" exec="display" name="display" namespace="$(var ns1)" output="screen">
+      <param name="display/ns" value="$(var ns1)"/>
+      <param name="display/loop_rate_hz" value="$(var loop_rate_display)"/>
+    </node>
+  </group>
+
+  <node pkg="rviz2" exec="rviz2" name="rviz2" args="-d $(find-pkg-share simulator)/../../../../resources/rviz/ros2_practice.rviz"/>
+</launch>

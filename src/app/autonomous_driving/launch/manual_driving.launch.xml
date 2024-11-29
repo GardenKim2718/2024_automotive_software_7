@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="autonomous_driving" exec="simultaneous_inputs.py" name="manual_input"  output="screen">
+  </node>
+</launch>

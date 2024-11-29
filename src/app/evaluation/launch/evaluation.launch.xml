@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Declare arguments as strings where appropriate -->
+  <arg name="loop_rate" default="50"/>
+  <arg name="lane_id" default="'1'" />
+  <arg name="time_limit" default="50.0"/>
+  <arg name="lane_departure" default="4.5"/>
+
+  <!-- Launch evaluation node -->
+  <node pkg="evaluation" exec="evaluation" name="evaluation_node" output="screen">
+    <param name="evaluation/loop_rate" value="$(var loop_rate)"/>
+    <param name="evaluation/lane_id" value="$(var lane_id)"/>
+    <param name="evaluation/time_limit" value="$(var time_limit)"/>
+    <param name="evaluation/lane_departure" value="$(var lane_departure)"/>
+  </node>
+</launch>

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="ns1" default="ego"/>
+  
+  <!-- Loop Rate -->   
+  <arg name="loop_rate_scenario" default="100.0"/>
+
+  <!-- Declare arguments as strings where appropriate -->
+  <arg name="num_of_lane" default="3" />
+  <arg name="num_of_merging_vehicles" default="3" />
+  <arg name="id_merging_lane" default="1" />
+  <arg name="detection_range" default="20.0" />
+  <arg name="object_max_accel" default="3.0" />
+  <arg name="merging_section_length" default="30.0" />
+  <arg name="merging_interval" default="10.0" />
+  <arg name="merging_speed" default="30.0" />
+  <arg name="merging_target_speed" default="50.0" />
+
+  <!-- Launch evaluation node -->
+  <node pkg="mission_manager" exec="mission_manager" name="mission_manager_node" namespace="$(var ns1)" output="screen">
+    <param name="mission_manager/ns" value="$(var ns1)"/>
+    <param name="mission_manager/loop_rate_hz" value="$(var loop_rate_scenario)"/>
+    <param name="mission_manager/num_of_lane" value="$(var num_of_lane)"/>
+    <param name="mission_manager/id_merging_lane" value="$(var id_merging_lane)"/>
+    <param name="mission_manager/num_of_merging_vehicles" value="$(var num_of_merging_vehicles)"/>
+    <param name="mission_manager/detection_range" value="$(var detection_range)"/>
+    <param name="mission_manager/object_max_accel" value="$(var object_max_accel)"/>
+    <param name="mission_manager/merging_section_length" value="$(var merging_section_length)"/>
+    <param name="mission_manager/merging_interval" value="$(var merging_interval)"/>
+    <param name="mission_manager/merging_speed" value="$(var merging_speed)"/>
+    <param name="mission_manager/merging_target_speed" value="$(var merging_target_speed)"/>
+  </node>
+
+</launch>
