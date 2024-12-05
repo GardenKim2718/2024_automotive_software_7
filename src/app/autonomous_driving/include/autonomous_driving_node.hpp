@@ -114,6 +114,37 @@ class AutonomousDriving : public rclcpp::Node {
         bool b_is_simulator_on_ = false;
         bool b_is_lane_points_ = false;
         bool b_is_mission_ = false;
+
+        // Parameters
+        double param_pp_kd_ = 1.0;
+        double param_pp_kv_ = 0.05;
+        double param_pp_kc_ = 0.5;
+        double param_pid_kp_ = 0.0;
+        double param_pid_ki_ = 0.0;
+        double param_pid_kd_ = 0.0;
+        double param_brake_ratio_ = 1.0;
+
+        double param_m_ROIFront_param = 20.0;
+        double param_m_ROIRear_param = 10.0;
+        double param_m_ROILeft_param = 3.0;
+        double param_m_ROIRight_param = 3.0;
+        std::string param_ref_csv_path;
+
+        // Algorhtm variables
+        double speed_error_integral_ = 0.0;
+        double speed_error_prev_     = 0.0;
+
+        // Custom variables
+        double speed_error           = 0.0;          // PID error
+        // rclcpp::Time last_time;
+        double interval              = 0.01;
+        const double integral_max    = 4.0;          // for anti-windup
+        double param_m_Lookahead_distance = 0.8;     // look-ahead dist for pure pursuit
+        const double pursuit_threshold     = 12.0;    // for obstacle scenario
+        const double safe_distance         = 11.0;
+        double last_e_        = 0.0;
+        const double max_steering_angle = 0.35;
+        
 };
 
 #endif // __AUTONOMOUS_DRIVING_HPP__
