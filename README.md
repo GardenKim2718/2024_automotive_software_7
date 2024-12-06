@@ -30,8 +30,8 @@ Coding Guidlines
 10. Operators: follow the PDF examble
 11. For the MISRA-C, we may abide it in further coding, but for now we will not follow it as it requires massive changes including making new functions and code writing
 
-
-
+Comments
+--------------
 I uploaded the autonomous driving code from mid term.
 
 However, it seems that the formats and variables have changed alot from mid-term.
