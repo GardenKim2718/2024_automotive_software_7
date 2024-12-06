@@ -298,8 +298,8 @@ void AutonomousDriving::Run() {
 
         double limit_speed = mission.speed_limit
 
-        // Compute the original e_
-        double e_ = driving_way.a0 * std::pow(param_m_Lookahead_distance, 3)
+        // Compute the original lateral_error
+        double lateral_error = driving_way.a0 * std::pow(param_m_Lookahead_distance, 3)
                 + driving_way.a1 * std::pow(param_m_Lookahead_distance, 2)
                 + driving_way.a2 * param_m_Lookahead_distance
                 + driving_way.a3;
@@ -308,12 +308,12 @@ void AutonomousDriving::Run() {
         if (filtered_points.size() == 0){
             vehicle_command.accel = 0.0;
             vehicle_command.brake = 1.0;
-            e_                    = last_e_;        //maintain last steering
+            lateral_error                    = last_e_;        //maintain last steering
         }
 
         // Apply the low-pass filter
-        e_ = alpha * e_ + (1.0 - alpha) * last_e_;
-        last_e_ = e_;
+        lateral_error = alpha * lateral_error + (1.0 - alpha) * last_e_;
+        last_e_ = lateral_error;
 
         // Now use filtered_e_ for steering calculation
         double steering = atan((2 * param_pp_kd_ * e_) / (param_pp_kv_ * vehicle_state.velocity + param_pp_kc_));
