@@ -142,7 +142,7 @@ class AutonomousDriving : public rclcpp::Node {
         double param_m_Lookahead_distance = 0.8;     // look-ahead dist for pure pursuit
         const double pursuit_threshold     = 12.0;    // for obstacle scenario
         const double safe_distance         = 11.0;
-        double last_e_        = 0.0;
+        double last_lateral_error        = 0.0;
         const double max_steering_angle = 0.35;
         
 };

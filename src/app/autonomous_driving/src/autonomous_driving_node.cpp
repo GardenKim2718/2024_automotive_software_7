@@ -14,6 +14,12 @@
  *              : clean up
  */
 
+/**
+ * @date
+ * 2024-12-06 Seokhui Han updated variable names
+ * 2024-12-06 Chungwon Kim updated code to abide coding guideline
+ */
+
 #include "autonomous_driving_node.hpp"
 
 AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp::NodeOptions &options)
@@ -114,6 +120,7 @@ void AutonomousDriving::Run() {
         return;
     }
 
+    // Copy shared data from subscribers to local variables
     interface::VehicleCommand manual_input_data; {
         if (config_.use_manual_inputs == true) {
             std::lock_guard<std::mutex> lock(manual_input_mutex_);
@@ -153,25 +160,28 @@ void AutonomousDriving::Run() {
     interface::VehicleCommand command_to_vehicle;
 
     //////////////////////////////////////////////////
-    // Lane Detection Algorithm
+    // Lane detection and classification
     std::vector<geometry_msgs::msg::Point> filtered_lane_points;
 
-    // Add all points from current_lane_points.point to filtered_lane_points
+    // Filter and store all lane points
     for (const auto& point : current_lane_points.point) {
         filtered_lane_points.push_back(point);
     }
 
     RCLCPP_INFO(this->get_logger(), "Number of filtered points: %zu", filtered_lane_points.size());
 
+    // Sort points based on x-coordinates
     std::sort(filtered_lane_points.begin(), filtered_lane_points.end(), [](const auto& a, const auto& b) {
         return a.x < b.x;
     });
 
+    // Classify lane points into right and left lanes
     double lane_threshold = 2.0;
 
     std::vector<geometry_msgs::msg::Point> right_lane_points, left_lane_points;
     geometry_msgs::msg::Point last_left_point, last_right_point;
 
+    // Initial classification of lane points
     for (const auto& point : filtered_lane_points) {
         if (point.x > -1.0 && point.x < 2.0) {
             if (right_lane_points.empty() && point.y < 0) {
@@ -181,13 +191,14 @@ void AutonomousDriving::Run() {
                 left_lane_points.push_back(point);
                 last_left_point = point;
             }
-            // Break if we have both initial right and left points
+            // Break if initial points for both lanes are found
             if (!right_lane_points.empty() && !left_lane_points.empty()) {
                 break;
             }
         }
     }
 
+    // Assign subsequent points to lanes based on proximity
     for (const auto& point : filtered_lane_points) {
         // Check if this point belongs to the current right lane
         if (std::abs(point.y - last_right_point.y) < lane_threshold) {
@@ -208,12 +219,11 @@ void AutonomousDriving::Run() {
     //    The generated left and right lane should be stored in the "poly_lanes".
     //    If you do so, the Display node will visualize the lanes.
 
+    // Perform polynomial fitting for left lane
     Eigen::MatrixXd A(left_lane.size(), 4);  // For cubic fitting (a3, a2, a1, a0)
-
     Eigen::VectorXd b(left_lane.size());
 
     // Fill the matrix A and vector b with left lane points
-
     for (size_t i = 0; i < left_lane.size(); ++i) {
 
         double x = left_lane[i].x;
@@ -228,74 +238,63 @@ void AutonomousDriving::Run() {
     }
 
     // Calculate the coefficients for the left lane using pseudo inverse
-
     Eigen::VectorXd left_coeffs = A.completeOrthogonalDecomposition().solve(b);
 
-    // Do the same for the right lane
-
+    // Perform polynomial fitting for right lane
     Eigen::MatrixXd A_right(right_lane.size(), 4);
-
     Eigen::VectorXd b_right(right_lane.size());
 
     for (size_t i = 0; i < right_lane.size(); ++i) {
-
         double x = right_lane[i].x;
-
         b_right(i) = right_lane[i].y;
-
         A_right(i, 0) = std::pow(x, 3);
         A_right(i, 1) = std::pow(x, 2);
         A_right(i, 2) = x;
         A_right(i, 3) = 1.0;
-
     }
 
     Eigen::VectorXd right_coeffs = A_right.completeOrthogonalDecomposition().solve(b_right);
 
-        // Create PolyfitLaneData for left and right lanes
-        ad_msgs::msg::PolyfitLaneData left_polyline, right_polyline;
+    // Store polynomial coefficients in PolyfitLaneData
+    ad_msgs::msg::PolyfitLaneData left_polyline, right_polyline;
 
-        // Set IDs or any unique identifiers for each lane fit
-        left_polyline.frame_id = param_vehicle_namespace_ + "/body";
-        left_polyline.id = "1";
-        right_polyline.frame_id = param_vehicle_namespace_ + "/body";
-        right_polyline.id = "2";
+    // Set IDs or any unique identifiers for each lane fit
+    left_polyline.frame_id = param_vehicle_namespace_ + "/body";
+    left_polyline.id = "1";
+    right_polyline.frame_id = param_vehicle_namespace_ + "/body";
+    right_polyline.id = "2";
 
-        // Assign coefficients to the left and right lane polylines
-        left_polyline.a0 = left_coeffs(3);
-        left_polyline.a1 = left_coeffs(2);
-        left_polyline.a2 = left_coeffs(1);
-        left_polyline.a3 = left_coeffs(0);
+    // Assign coefficients to the left and right lane polylines
+    left_polyline.a0 = left_coeffs(3);
+    left_polyline.a1 = left_coeffs(2);
+    left_polyline.a2 = left_coeffs(1);
+    left_polyline.a3 = left_coeffs(0);
 
-        right_polyline.a0 = right_coeffs(3);
-        right_polyline.a1 = right_coeffs(2);
-        right_polyline.a2 = right_coeffs(1);
-        right_polyline.a3 = right_coeffs(0);
+    right_polyline.a0 = right_coeffs(3);
+    right_polyline.a1 = right_coeffs(2);
+    right_polyline.a2 = right_coeffs(1);
+    right_polyline.a3 = right_coeffs(0);
 
-        // Add the polylines to the poly_lanes' polyfitlanes list
-        poly_lanes.polyfitlanes.push_back(left_polyline);
-        poly_lanes.polyfitlanes.push_back(right_polyline);
+    // Add the polylines to the poly_lanes' polyfitlanes list
+    poly_lanes.polyfitlanes.push_back(left_polyline);
+    poly_lanes.polyfitlanes.push_back(right_polyline);
 
-        // 2. Generate the center line(=driving_way) which the vehicle will follow.
-        //    The generated center line should be stored in the "driving_way".
-        //    If you do so, the Display node will visualize the center line.
-
-        driving_way.a3 = (left_coeffs(0) + right_coeffs(0)) / 2.0;
-        driving_way.a2 = (left_coeffs(1) + right_coeffs(1)) / 2.0;
-        driving_way.a1 = (left_coeffs(2) + right_coeffs(2)) / 2.0;
-        driving_way.a0 = (left_coeffs(3) + right_coeffs(3)) / 2.0;
-        
-        RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", 
-        driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
+    // Generate center driving lane as the average of left and right lanes
+    //    The generated center line should be stored in the "driving_way".
+    //    If you do so, the Display node will visualize the center line.
+    driving_way.a3 = (left_coeffs(0) + right_coeffs(0)) / 2.0;
+    driving_way.a2 = (left_coeffs(1) + right_coeffs(1)) / 2.0;
+    driving_way.a1 = (left_coeffs(2) + right_coeffs(2)) / 2.0;
+    driving_way.a0 = (left_coeffs(3) + right_coeffs(3)) / 2.0;
+    
+    RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", 
+    driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
     if (cfg_.use_manual_inputs == false) {
-        // 3. Calculate the lateral command (steering angle [rad])
+        // Lateral control: Calculate steering angle based on Pure Pursuit
         //    You can tune your controller using the ros parameter.
         //    We provide the example of 'Pure Pursuit' parameters, so you can edit and use them.
-
-        // Define a smoothing factor (0 < alpha < 1)
-        double alpha = 0.5; // Adjust this value for desired smoothing effect
-
+        double alpha = 0.5; // alpha: Smoothing factor for lateral error low-pass-filter
         double limit_speed = mission.speed_limit
 
         // Compute the original lateral_error
@@ -308,21 +307,18 @@ void AutonomousDriving::Run() {
         if (filtered_points.size() == 0){
             vehicle_command.accel = 0.0;
             vehicle_command.brake = 1.0;
-            lateral_error                    = last_e_;        //maintain last steering
+            lateral_error = last_lateral_error;        //maintain last steering
         }
 
         // Apply the low-pass filter
-        lateral_error = alpha * lateral_error + (1.0 - alpha) * last_e_;
-        last_e_ = lateral_error;
+        lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;
+        last_lateral_error = lateral_error;
 
-        // Now use filtered_e_ for steering calculation
+        // Use filtered_e_ for steering calculation
         double steering = atan((2 * param_pp_kd_ * e_) / (param_pp_kv_ * vehicle_state.velocity + param_pp_kc_));
         vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);
 
-        // 4. Calculate the longitudinal command(acceleration[0~1] or brake[0~1])
-        //    You can tune your controller using the ros parameter.
-        //    We provide the example of 'PID' parameters, so you can edit and use them.
-
+        // Longitudinal control: Calculate acceleration/brake based on PID
         // Extract ego vehicle's position
         double ego_x = vehicle_state.x;
         double ego_y = vehicle_state.y;
