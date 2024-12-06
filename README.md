@@ -16,7 +16,7 @@ Rules for creating & maintaining branches
 3. Request compare & pull after informing other team mates and it is confirmed that the change is stable.
 4. The main branch should be remained as our 'stable' version of our project.
 
-Coding Guidlines
+Coding Guidelines
 ----------------
 1. Word spacing: Follow all the rules within PDF
 2. Braces: combination of first and second style(the last one)
