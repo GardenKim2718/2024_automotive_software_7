@@ -91,7 +91,7 @@ void AutonomousDriving::ProcessParams() {
 }
 
 void AutonomousDriving::Run() {
-    auto current_time = this->now();
+    auto current_time = this->now(); // current_time : Current time of the system, unit: seconds
     RCLCPP_INFO_THROTTLE(this->get_logger(), *get_clock(), 1000, "Running ...");
     ProcessParams();
 
@@ -121,26 +121,26 @@ void AutonomousDriving::Run() {
     }
 
     // Copy shared data from subscribers to local variables
-    interface::VehicleCommand manual_input_data; {
+    interface::VehicleCommand manual_input_data; { // manual_input_data : Command received from manual input control
         if (config_.use_manual_inputs == true) {
-            std::lock_guard<std::mutex> lock(manual_input_mutex_);
-            manual_input_data = manual_input_;
+            std::lock_guard<std::mutex> lock(manual_input_mutex_); // lock : Mutex to protect access to manual_input_
+            manual_input_data = manual_input_; // Assign manual input command
         }
     }
 
-    interface::VehicleState current_vehicle_state; {
-        std::lock_guard<std::mutex> lock(vehicle_state_mutex_);
-        current_vehicle_state = vehicle_state_;
+    interface::VehicleState current_vehicle_state; { // current_vehicle_state : Current state of the vehicle (position, velocity, etc.)
+        std::lock_guard<std::mutex> lock(vehicle_state_mutex_); // lock : Mutex to protect access to vehicle_state_
+        current_vehicle_state = vehicle_state_; // Assign current vehicle state
     }
 
-    interface::Lane current_lane_points; {
-        std::lock_guard<std::mutex> lock(lane_points_mutex_);
-        current_lane_points = lane_points_;
+    interface::Lane current_lane_points; { // current_lane_points : Lane points detected by the vehicle's sensors
+        std::lock_guard<std::mutex> lock(lane_points_mutex_); // lock : Mutex to protect access to lane_points_
+        current_lane_points = lane_points_; // Assign lane points
     }
 
-    interface::Mission current_mission; {
-        std::lock_guard<std::mutex> lock(mission_mutex_);
-        current_mission = mission_;
+    interface::Mission current_mission; { // current_mission : Mission details (e.g., destination, speed limits)
+        std::lock_guard<std::mutex> lock(mission_mutex_); // lock : Mutex to protect access to mission_
+        current_mission = mission_; // Assign mission data
     }
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
@@ -161,11 +161,11 @@ void AutonomousDriving::Run() {
 
     //////////////////////////////////////////////////
     // Lane detection and classification
-    std::vector<geometry_msgs::msg::Point> filtered_lane_points;
+    std::vector<geometry_msgs::msg::Point> filtered_lane_points; // filtered_lane_points : List of lane points after filtering
 
     // Filter and store all lane points
     for (const auto& point : current_lane_points.point) {
-        filtered_lane_points.push_back(point);
+        filtered_lane_points.push_back(point); // Add each point to the filtered list
     }
 
     RCLCPP_INFO(this->get_logger(), "Number of filtered points: %zu", filtered_lane_points.size());
@@ -176,20 +176,20 @@ void AutonomousDriving::Run() {
     });
 
     // Classify lane points into right and left lanes
-    double lane_threshold = 2.0;
+    const double lane_threshold = 2.0; // lane_threshold : Threshold for classifying points as left or right lane
 
-    std::vector<geometry_msgs::msg::Point> right_lane_points, left_lane_points;
-    geometry_msgs::msg::Point last_left_point, last_right_point;
+    std::vector<geometry_msgs::msg::Point> right_lane_points, left_lane_points; // right_lane_points : Points belonging to the right lane, left_lane_points : Points belonging to the left lane
+    geometry_msgs::msg::Point last_left_point, last_right_point; // last_left_point : Last point in the left lane, last_right_point : Last point in the right lane
 
     // Initial classification of lane points
     for (const auto& point : filtered_lane_points) {
-        if (point.x > -1.0 && point.x < 2.0) {
+        if (point.x > -1.0 && point.x < 2.0) { // Check if point is within the valid x range
             if (right_lane_points.empty() && point.y < 0) {
-                right_lane_points.push_back(point);
-                last_right_point = point;
+                right_lane_points.push_back(point); // Assign to right lane
+                last_right_point = point; // Update last right point
             } else if (left_lane_points.empty() && point.y > 0) {
-                left_lane_points.push_back(point);
-                last_left_point = point;
+                left_lane_points.push_back(point); // Assign to left lane
+                last_left_point = point; // Update last left point
             }
             // Break if initial points for both lanes are found
             if (!right_lane_points.empty() && !left_lane_points.empty()) {
@@ -202,12 +202,12 @@ void AutonomousDriving::Run() {
     for (const auto& point : filtered_lane_points) {
         // Check if this point belongs to the current right lane
         if (std::abs(point.y - last_right_point.y) < lane_threshold) {
-            right_lane_points.push_back(point);
+            right_lane_points.push_back(point); // Add to right lane
             last_right_point = point; // Update the last right lane point
         } 
         // Check if this point belongs to the current left lane
         else if (std::abs(point.y - last_left_point.y) < lane_threshold) {
-            left_lane_points.push_back(point);
+            left_lane_points.push_back(point); // Add to left lane
             last_left_point = point; // Update the last left lane point
         }
     }
@@ -215,13 +215,13 @@ void AutonomousDriving::Run() {
     RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
     RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
 
-    // 1. With divided points, you can curve fit the lane and find the left, right lane.
+    //    With divided points, you can curve fit the lane and find the left, right lane.
     //    The generated left and right lane should be stored in the "poly_lanes".
     //    If you do so, the Display node will visualize the lanes.
 
     // Perform polynomial fitting for left lane
-    Eigen::MatrixXd A(left_lane.size(), 4);  // For cubic fitting (a3, a2, a1, a0)
-    Eigen::VectorXd b(left_lane.size());
+    Eigen::MatrixXd A(left_lane.size(), 4);  // A : Matrix for fitting the cubic polynomial for the left lane
+    Eigen::VectorXd b(left_lane.size()); // b : Vector for the y-coordinates of the left lane points
 
     // Fill the matrix A and vector b with left lane points
     for (size_t i = 0; i < left_lane.size(); ++i) {
@@ -234,15 +234,14 @@ void AutonomousDriving::Run() {
         A(i, 1) = std::pow(x, 2);
         A(i, 2) = x;
         A(i, 3) = 1.0;
-
     }
 
     // Calculate the coefficients for the left lane using pseudo inverse
-    Eigen::VectorXd left_coeffs = A.completeOrthogonalDecomposition().solve(b);
+    Eigen::VectorXd left_coeffs = A.completeOrthogonalDecomposition().solve(b); // left_coeffs : Coefficients for the left lane polynomial
 
     // Perform polynomial fitting for right lane
-    Eigen::MatrixXd A_right(right_lane.size(), 4);
-    Eigen::VectorXd b_right(right_lane.size());
+    Eigen::MatrixXd A_right(right_lane.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
+    Eigen::VectorXd b_right(right_lane.size()); // b_right : Vector for the y-coordinates of the right lane points
 
     for (size_t i = 0; i < right_lane.size(); ++i) {
         double x = right_lane[i].x;
@@ -253,16 +252,16 @@ void AutonomousDriving::Run() {
         A_right(i, 3) = 1.0;
     }
 
-    Eigen::VectorXd right_coeffs = A_right.completeOrthogonalDecomposition().solve(b_right);
+    Eigen::VectorXd right_coeffs = A_right.completeOrthogonalDecomposition().solve(b_right); // right_coeffs : Coefficients for the right lane polynomial
 
     // Store polynomial coefficients in PolyfitLaneData
     ad_msgs::msg::PolyfitLaneData left_polyline, right_polyline;
 
     // Set IDs or any unique identifiers for each lane fit
-    left_polyline.frame_id = param_vehicle_namespace_ + "/body";
-    left_polyline.id = "1";
-    right_polyline.frame_id = param_vehicle_namespace_ + "/body";
-    right_polyline.id = "2";
+    left_polyline.frame_id = param_vehicle_namespace_ + "/body"; // left_polyline.frame_id : Frame of reference for left lane polyline
+    left_polyline.id = "1"; // left_polyline.id : Unique identifier for the left lane
+    right_polyline.frame_id = param_vehicle_namespace_ + "/body"; // right_polyline.frame_id : Frame of reference for right lane polyline
+    right_polyline.id = "2"; // right_polyline.id : Unique identifier for the right lane
 
     // Assign coefficients to the left and right lane polylines
     left_polyline.a0 = left_coeffs(3);
@@ -324,7 +323,6 @@ void AutonomousDriving::Run() {
         double ego_y = vehicle_state.y;
 
         // obstacle distance calculation
-        
         double min_distance = 100.0;
         double obs_velocity = 20.0;
 
@@ -379,7 +377,6 @@ void AutonomousDriving::Run() {
             vehicle_command.brake = -pidvalue_;
         }
 
-        
         RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
              vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
 
@@ -405,7 +402,6 @@ void AutonomousDriving::Run() {
     else {
         vehicle_command = manual_input;
     }
-
 }
 
 int main(int argc, char **argv) {
