@@ -40,8 +40,10 @@ TO DO
 
 Comments
 --------------
-I uploaded the autonomous driving code from mid term.
+~~I uploaded the autonomous driving code from mid term.~~
 
-However, it seems that the formats and variables have changed alot from mid-term.
+~~However, it seems that the formats and variables have changed alot from mid-term.~~
 
-The code will not be able to build for now.
+~~The code will not be able to build for now.~~
+
+The vehicle is now drivable.
