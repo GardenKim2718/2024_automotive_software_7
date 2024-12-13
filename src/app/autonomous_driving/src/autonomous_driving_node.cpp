@@ -154,8 +154,7 @@ void AutonomousDriving::Run() {
     // TODO: Add lateral and longitudinal control algorithm
     interface::VehicleCommand vehicle_command;
 
-    //////////////////////////////////////////////////
-    // Lane detection and classification
+    /* >>>>>>> Lane Detection <<<<<<<*/
     std::vector<geometry_msgs::msg::Point> filtered_lane_points; // filtered_lane_points : List of lane points after filtering
 
     // Filter and store all lane points
@@ -175,73 +174,80 @@ void AutonomousDriving::Run() {
     });
 
     // Classify lane points into right and left lanes
-    const double lane_threshold = 2.0; // lane_threshold : Threshold for classifying points as left or right lane
-
     std::vector<geometry_msgs::msg::Point> right_lane_points, left_lane_points; // right_lane_points : Points belonging to the right lane, left_lane_points : Points belonging to the left lane
     geometry_msgs::msg::Point last_left_point, last_right_point; // last_left_point : Last point in the left lane, last_right_point : Last point in the right lane
 
     // Initial classification of lane points
     for (const auto& point : filtered_lane_points) {
-        if (point.x > -1.0 && point.x < 2.0) { // Check if point is within the valid x range
-            if (right_lane_points.empty() && point.y < 0) {
-                right_lane_points.push_back(point); // Assign to right lane
-                last_right_point = point; // Update last right point
-            } else if (left_lane_points.empty() && point.y > 0) {
-                left_lane_points.push_back(point); // Assign to left lane
-                last_left_point = point; // Update last left point
+        if (point.x > -1.0 && point.x < 5.0) { // Check if point is within the valid x range
+            if (right_lane_points.empty() && left_lane_points.empty()){ // if both lanes have not been detected
+                if (point.y < 0) {
+                    right_lane_points.push_back(point); // Assign to right lane
+                    last_right_point = point; // Update last right point
+                } else if (point.y > 0) {
+                    left_lane_points.push_back(point); // Assign to left lane
+                    last_left_point = point; // Update last left point
+                }
             }
-            // Break if initial points for both lanes are found
-            if (!right_lane_points.empty() && !left_lane_points.empty()) {
-                break;
+            else if (!right_lane_points.empty() && left_lane_points.empty()){ // if right_lane is detected but left is undetected
+                if (point.y > 0 && point.y > (last_right_point.y + lane_threshold)) {
+                    left_lane_points.push_back(point); // Assign to left lane
+                    last_left_point = point; // Update last left point
+                }
+            }
+            else if (right_lane_points.empty() && !left_lane_points.empty()){  // if left lane is detected but right is undetected
+                if (point.y < 0 && point.y < (last_left_point.y - lane_threshold)) {
+                    right_lane_points.push_back(point); // Assign to left lane
+                    last_left_point = point; // Update last left point
+                }
+            }
+            else{ 
+                break; // Break if initial points for both lanes are found
             }
         }
     }
 
     // Assign subsequent points to lanes based on proximity
     for (const auto& point : filtered_lane_points) {
-        // Check if this point belongs to the current right lane
-        if (std::abs(point.y - last_right_point.y) < lane_threshold) {
-            right_lane_points.push_back(point); // Add to right lane
-            last_right_point = point; // Update the last right lane point
-        } 
-        // Check if this point belongs to the current left lane
-        else if (std::abs(point.y - last_left_point.y) < lane_threshold) {
-            left_lane_points.push_back(point); // Add to left lane
-            last_left_point = point; // Update the last left lane point
+        if (point.x > -1.0) { // Check if point is within the valid x range
+            // Check if this point belongs to the current right lane
+            if ((std::abs(point.y - last_right_point.y) < lane_threshold) && !right_lane_points.empty()) {
+                right_lane_points.push_back(point); // Add to right lane
+                last_right_point = point; // Update the last right lane point
+            }
+            // Check if this point belongs to the current left lane
+            else if ((std::abs(point.y - last_left_point.y) < lane_threshold) && !left_lane_points.empty()) {
+                left_lane_points.push_back(point); // Add to left lane
+                last_left_point = point; // Update the last left lane point
+            }
         }
     }
 
     RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
     RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
 
-    //    With divided points, you can curve fit the lane and find the left, right lane.
+    /* >>>>>>> Lane Fitting <<<<<<<*/
+    //    With classified points, you can curve fit the lane and find the left, right lane.
     //    The generated left and right lane should be stored in the "poly_lanes".
     //    If you do so, the Display node will visualize the lanes.
 
     // Perform polynomial fitting for left lane
-    Eigen::MatrixXd A(left_lane_points.size(), 4);  // A : Matrix for fitting the cubic polynomial for the left lane
-    Eigen::VectorXd b(left_lane_points.size()); // b : Vector for the y-coordinates of the left lane points
-
-    // Fill the matrix A and vector b with left lane points
-    for (size_t i = 0; i < left_lane_points.size(); ++i) {
-
-        double x = left_lane_points[i].x;
-
-        b(i) = left_lane_points[i].y;
-
-        A(i, 0) = std::pow(x, 3);
-        A(i, 1) = std::pow(x, 2);
-        A(i, 2) = x;
-        A(i, 3) = 1.0;
-    }
-
-    // Calculate the coefficients for the left lane using pseudo inverse
-    Eigen::VectorXd left_coeffs = A.completeOrthogonalDecomposition().solve(b); // left_coeffs : Coefficients for the left lane polynomial
-
-    // Perform polynomial fitting for right lane
+    Eigen::MatrixXd A_left(left_lane_points.size(), 4);  // A : Matrix for fitting the cubic polynomial for the left lane
+    Eigen::VectorXd b_left(left_lane_points.size()); // b : Vector for the y-coordinates of the left lane points
     Eigen::MatrixXd A_right(right_lane_points.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
     Eigen::VectorXd b_right(right_lane_points.size()); // b_right : Vector for the y-coordinates of the right lane points
 
+    // Fill the matrix A and vector b with left lane points
+    for (size_t i = 0; i < left_lane_points.size(); ++i) {
+        double x = left_lane_points[i].x;
+        b_left(i) = left_lane_points[i].y;
+        A_left(i, 0) = std::pow(x, 3);
+        A_left(i, 1) = std::pow(x, 2);
+        A_left(i, 2) = x;
+        A_left(i, 3) = 1.0;
+    }
+
+    // Fill the matrix A and vector b with right lane points
     for (size_t i = 0; i < right_lane_points.size(); ++i) {
         double x = right_lane_points[i].x;
         b_right(i) = right_lane_points[i].y;
@@ -251,6 +257,8 @@ void AutonomousDriving::Run() {
         A_right(i, 3) = 1.0;
     }
 
+    // Polynomial fitting (3rd degree)
+    Eigen::VectorXd left_coeffs = A_left.completeOrthogonalDecomposition().solve(b_left); // left_coeffs : Coefficients for the left lane polynomial
     Eigen::VectorXd right_coeffs = A_right.completeOrthogonalDecomposition().solve(b_right); // right_coeffs : Coefficients for the right lane polynomial
 
     // Store polynomial coefficients in PolyfitLaneData
@@ -285,8 +293,7 @@ void AutonomousDriving::Run() {
     driving_way.a1 = (left_coeffs(2) + right_coeffs(2)) / 2.0;
     driving_way.a0 = (left_coeffs(3) + right_coeffs(3)) / 2.0;
     
-    RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", 
-    driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
+    // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
     if (cfg_.use_manual_inputs == false) {
         // Lateral control: Calculate steering angle based on Pure Pursuit
@@ -299,13 +306,6 @@ void AutonomousDriving::Run() {
                 + driving_way.a1 * std::pow(param_m_Lookahead_distance, 2)
                 + driving_way.a2 * param_m_Lookahead_distance
                 + driving_way.a3;
-
-        // stop if out of track
-        if (filtered_lane_points.size() == 0){
-            vehicle_command.accel = 0.0;
-            vehicle_command.brake = 1.0;
-            lateral_error = last_lateral_error;        //maintain last steering
-        }
 
         // Apply the low-pass filter
         lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;
@@ -333,7 +333,7 @@ void AutonomousDriving::Run() {
             obs_velocity = obstacle.velocity;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Min distance: %.2f", min_distance);
+        // RCLCPP_INFO(this->get_logger(), "Min distance: %.2f", min_distance);
 
         double target_speed = 0;
 
@@ -341,11 +341,12 @@ void AutonomousDriving::Run() {
             // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
             if (min_distance < safe_distance){
                 target_speed = std::clamp( obs_velocity - 3.5, min_speed, limit_speed - 0.05);
-            } else{
+            }
+            else{
                 target_speed = std::clamp( obs_velocity + 2.0 , min_speed ,limit_speed - 0.05);
             }
-
-        }   else{  // regular longitudinal control(PID + anti-windup)
+        }
+        else{  // regular longitudinal control(PID + anti-windup)
             target_speed = limit_speed - current_vehicle_state.velocity - 0.05 ;
         }
 

@@ -33,10 +33,14 @@ Coding Guidelines
 Update
 --------------
 2024-12-06  Updated for coding guideline homework
-2024-12-13  Code fix
+2024-12-13  Code fix (now working)
 
 TO DO
 --------------
+
+Branch Description(Describe what this branch is made for)
+--------------
+Testing enhanced lane detection & fitting
 
 Comments
 --------------

@@ -145,20 +145,21 @@ class AutonomousDriving : public rclcpp::Node {
         double speed_error_prev_     = 0.0;
 
         // Custom variables
-        double target_speed          = 10.0;
-        double speed_error           = 0.0;          // PID error
-        // rclcpp::Time last_time;
+        const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
         const double min_speed       = 3.0;          // minimum speed if steering exceeds steering_threshold
         const double alpha           = 0.5;
         const double steering_threshold = 0.18;      // steering threshold for triggering deceleration
         const double interval        = 0.01;         // time interval in seconds (100Hz=0.01s)
         const double integral_max    = 4.0;          // for anti-windup
+        const double pursuit_threshold   = 12.0;    // for obstacle scenario
+        const double safe_distance       = 11.0;
+        int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
+        double target_speed          = 10.0;
+        double speed_error           = 0.0;          // PID error
         double param_m_Lookahead_distance = 0.8;     // look-ahead dist for pure pursuit
-        const double pursuit_threshold     = 12.0;    // for obstacle scenario
-        const double safe_distance         = 11.0;
         double lateral_error             = 0.0;
         double last_lateral_error        = 0.0;
-        const double max_steering_angle = 0.35;
+        const double max_steering_angle  = 0.35;
         
 };
 
