@@ -119,13 +119,6 @@ class AutonomousDriving : public rclcpp::Node {
         bool b_is_mission_ = false;
 
         // Parameters
-        // <arg name="pure_pursuit_kd" default="5.0"/>
-        // <arg name="pure_pursuit_kv" default="0.35"/>
-        // <arg name="pure_pursuit_kc" default="0.0"/>
-        // <arg name="pid_kp" default="5.0"/>
-        // <arg name="pid_ki" default="0.002"/>
-        // <arg name="pid_kd" default="0.0"/>
-        // <arg name="brake_ratio" default="1.2"/>
         double param_pp_kd_ = 1.0;
         double param_pp_kv_ = 0.05;
         double param_pp_kc_ = 0.5;

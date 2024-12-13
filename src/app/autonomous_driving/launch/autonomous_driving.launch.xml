@@ -2,7 +2,7 @@
 <launch>
     <arg name="ns1" default="ego"/>
     <arg name="loop_rate_hz" default="100.0"/>
-    <arg name="use_manual_inputs" default="false" />
+    <arg name="use_manual_inputs" default="true" />
 
     <node pkg="autonomous_driving" exec="autonomous_driving" name="autonomous_driving" namespace="$(var ns1)" output="screen">
         <param name="autonomous_driving/ns" value="$(var ns1)"/>

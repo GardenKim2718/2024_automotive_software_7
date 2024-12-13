@@ -20,6 +20,7 @@
  * 2024-12-06 Seokhui Han updated variable names
  * 2024-12-06 Chungwon Kim updated code to abide coding guideline
  * 2024-12-06 Chungwon Kim code fix and lane_fitting update
+ * 2024-12-06 Chungwon Kim testing improved lane fitting algorithm
  */
 
 #include "autonomous_driving_node.hpp"
@@ -295,7 +296,11 @@ void AutonomousDriving::Run() {
     
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
-    if (cfg_.use_manual_inputs == false) {
+    // If using manual input
+    if (cfg_.use_manual_inputs == true) {
+        vehicle_command = manual_input;
+    } // Autonomous driving
+    else {
         // Lateral control: Calculate steering angle based on Pure Pursuit
         //    You can tune your controller using the ros parameter.
         //    We provide the example of 'Pure Pursuit' parameters, so you can edit and use them.
@@ -379,19 +384,13 @@ void AutonomousDriving::Run() {
 
         RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
              vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
-
-        // Publish output
-        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-        p_vehicle_command_->publish(ros2_bridge::UpdateVehicleCommand(vehicle_command));
-        p_driving_way_->publish(ros2_bridge::UpdatePolyfitLane(driving_way));
-        p_poly_lanes_->publish(ros2_bridge::UpdatePolyfitLanes(poly_lanes));
     }
 
-    // Using Manual Input for command
+    // Publish output
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-    else {
-        vehicle_command = manual_input;
-    }
+    p_vehicle_command_->publish(ros2_bridge::UpdateVehicleCommand(vehicle_command));
+    p_driving_way_->publish(ros2_bridge::UpdatePolyfitLane(driving_way));
+    p_poly_lanes_->publish(ros2_bridge::UpdatePolyfitLanes(poly_lanes));
 }
 
 int main(int argc, char **argv) {
