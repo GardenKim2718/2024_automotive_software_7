@@ -33,6 +33,10 @@ Coding Guidelines
 Update
 --------------
 2024-12-06  Updated for coding guideline homework
+2024-12-13  Code fix
+
+TO DO
+--------------
 
 Comments
 --------------

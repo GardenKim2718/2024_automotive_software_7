@@ -293,7 +293,6 @@ void AutonomousDriving::Run() {
         //    You can tune your controller using the ros parameter.
         //    We provide the example of 'Pure Pursuit' parameters, so you can edit and use them.
         double limit_speed = current_mission.speed_limit;
-        min_speed = limit_speed;
 
         // Compute the original lateral_error
         lateral_error = driving_way.a0 * std::pow(param_m_Lookahead_distance, 3)
@@ -346,7 +345,7 @@ void AutonomousDriving::Run() {
                 target_speed = std::clamp( obs_velocity + 2.0 , min_speed ,limit_speed - 0.05);
             }
 
-        }   else{                                 // regular longitudinal control(PID + anti-windup)
+        }   else{  // regular longitudinal control(PID + anti-windup)
             target_speed = limit_speed - current_vehicle_state.velocity - 0.05 ;
         }
 
@@ -354,9 +353,10 @@ void AutonomousDriving::Run() {
             target_speed = min_speed;
         }
 
-        speed_error = target_speed - current_vehicle_state.velocity;
+        RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
 
-        // interval = (current_time.seconds() - last_time.seconds());  // Calculate time interval between controls in seconds
+        // Longitudinal Control
+        speed_error = target_speed - current_vehicle_state.velocity;
         speed_error_integral_ = std::clamp(speed_error_integral_ + speed_error * interval, -integral_max, integral_max);
 
         double diff = (speed_error - speed_error_prev_) / interval;
@@ -379,14 +379,6 @@ void AutonomousDriving::Run() {
         RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
              vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
 
-        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-        // Update output
-        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-        // p_driving_way_ = driving_way;
-        // p_poly_lanes_ = poly_lanes;
-        // p_vehicle_command_ = vehicle_command;
-
-        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         // Publish output
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         p_vehicle_command_->publish(ros2_bridge::UpdateVehicleCommand(vehicle_command));
@@ -394,6 +386,8 @@ void AutonomousDriving::Run() {
         p_poly_lanes_->publish(ros2_bridge::UpdatePolyfitLanes(poly_lanes));
     }
 
+    // Using Manual Input for command
+    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
     else {
         vehicle_command = manual_input;
     }
