@@ -15,9 +15,11 @@
  */
 
 /**
+ * !!!!!!!!!!!!!!!DESCRIBE THE UPDATE LOG YOU MADE!!!!!!!!!!!!!!!!
  * @date
  * 2024-12-06 Seokhui Han updated variable names
  * 2024-12-06 Chungwon Kim updated code to abide coding guideline
+ * 2024-12-06 Chungwon Kim code fix and lane_fitting update
  */
 
 #include "autonomous_driving_node.hpp"
@@ -30,60 +32,53 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
 
     // Parameters
     this->declare_parameter("autonomous_driving/ns", "");
-    if (!this->get_parameter("autonomous_driving/ns", vehicle_namespace_param_)) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to get vehicle_namespace");
-        vehicle_namespace_param_ = "";
-    }
-    else {
-        RCLCPP_INFO(this->get_logger(), "vehicle_namespace_param_: %s", vehicle_namespace_param_.c_str());
-    }
-    
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
-    this->declare_parameter("autonomous_driving/use_manual_inputs", false);    
+    this->declare_parameter("autonomous_driving/use_manual_inputs", false);
+       
     ////////////////////// TODO //////////////////////
     // TODO: Add more parameters
 
     //////////////////////////////////////////////////
     ProcessParams();
 
-    RCLCPP_INFO(this->get_logger(), "vehicle_namespace: %s", config_.vehicle_namespace.c_str());
-    RCLCPP_INFO(this->get_logger(), "loop_rate_hz: %f", config_.loop_rate_hz);
-    RCLCPP_INFO(this->get_logger(), "use_manual_inputs: %d", config_.use_manual_inputs);
+    RCLCPP_INFO(this->get_logger(), "vehicle_namespace: %s", cfg_.vehicle_namespace.c_str());
+    RCLCPP_INFO(this->get_logger(), "loop_rate_hz: %f", cfg_.loop_rate_hz);
+    RCLCPP_INFO(this->get_logger(), "use_manual_inputs: %d", cfg_.use_manual_inputs);
     ////////////////////// TODO //////////////////////
     // TODO: Add more parameters
 
     //////////////////////////////////////////////////
 
     // Subscriber init
-    manual_input_sub_ = this->create_subscription<ad_msgs::msg::VehicleCommand>(
+    s_manual_input_ = this->create_subscription<ad_msgs::msg::VehicleCommand>(
         "/manual_input", qos_profile, std::bind(&AutonomousDriving::CallbackManualInput, this, std::placeholders::_1));
-    vehicle_state_sub_ = this->create_subscription<ad_msgs::msg::VehicleState>(
+    s_vehicle_state_ = this->create_subscription<ad_msgs::msg::VehicleState>(
         "vehicle_state", qos_profile, std::bind(&AutonomousDriving::CallbackVehicleState, this, std::placeholders::_1));
-    lane_points_sub_ = this->create_subscription<ad_msgs::msg::LanePointData>(
+    s_lane_points_ = this->create_subscription<ad_msgs::msg::LanePointData>(
         "lane_points", qos_profile, std::bind(&AutonomousDriving::CallbackLanePoints, this, std::placeholders::_1));
-    mission_sub_ = this->create_subscription<ad_msgs::msg::Mission>(
+    s_mission_ = this->create_subscription<ad_msgs::msg::Mission>(
         "mission", qos_profile, std::bind(&AutonomousDriving::CallbackMission, this, std::placeholders::_1));
 
     // Publisher init
-    vehicle_command_pub_ = this->create_publisher<ad_msgs::msg::VehicleCommand>(
+    p_vehicle_command_ = this->create_publisher<ad_msgs::msg::VehicleCommand>(
         "vehicle_command", qos_profile);
-    driving_way_pub_ = this->create_publisher<ad_msgs::msg::PolyfitLaneData>(
+    p_driving_way_ = this->create_publisher<ad_msgs::msg::PolyfitLaneData>(
         "driving_way", qos_profile);
-    poly_lanes_pub_ = this->create_publisher<ad_msgs::msg::PolyfitLaneDataArray>(
+    p_poly_lanes_ = this->create_publisher<ad_msgs::msg::PolyfitLaneDataArray>(
         "poly_lanes", qos_profile);
 
     // Timer init
-    node_timer_ = this->create_wall_timer(
-        std::chrono::milliseconds((int64_t)(1000 / config_.loop_rate_hz)),
+    t_run_node_ = this->create_wall_timer(
+        std::chrono::milliseconds((int64_t)(1000 / cfg_.loop_rate_hz)),
         [this]() { this->Run(); }); 
 }
 
 AutonomousDriving::~AutonomousDriving() {}
 
 void AutonomousDriving::ProcessParams() {
-    this->get_parameter("autonomous_driving/ns", config_.vehicle_namespace);
-    this->get_parameter("autonomous_driving/loop_rate_hz", config_.loop_rate_hz);
-    this->get_parameter("autonomous_driving/use_manual_inputs", config_.use_manual_inputs);
+    this->get_parameter("autonomous_driving/ns", cfg_.vehicle_namespace);
+    this->get_parameter("autonomous_driving/loop_rate_hz", cfg_.loop_rate_hz);
+    this->get_parameter("autonomous_driving/use_manual_inputs", cfg_.use_manual_inputs);
     ////////////////////// TODO //////////////////////
     // TODO: Add more parameters
 
@@ -98,49 +93,49 @@ void AutonomousDriving::Run() {
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
     // Get subscribe variables
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-    if (config_.use_manual_inputs == true) {
-        if (is_manual_input_received_ == false) {
+    if (cfg_.use_manual_inputs == true) {
+        if (b_is_manual_input_ == false) {
             RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Manual Input ...");
             return;
         }
     }
 
-    if (is_simulator_on_ == false) {
+    if (b_is_simulator_on_ == false) {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Vehicle State ...");
         return;
     }
 
-    if (is_lane_points_received_ == false) {
+    if (b_is_lane_points_ == false) {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Lane Points ...");
         return;
     }
 
-    if (is_mission_received_ == false) {
+    if (b_is_mission_ == false) {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Mission ...");
         return;
     }
 
     // Copy shared data from subscribers to local variables
-    interface::VehicleCommand manual_input_data; { // manual_input_data : Command received from manual input control
-        if (config_.use_manual_inputs == true) {
-            std::lock_guard<std::mutex> lock(manual_input_mutex_); // lock : Mutex to protect access to manual_input_
-            manual_input_data = manual_input_; // Assign manual input command
+    interface::VehicleCommand manual_input; { // manual_input_data : Command received from manual input control
+        if (cfg_.use_manual_inputs == true) {
+            std::lock_guard<std::mutex> lock(mutex_manual_input_); // lock : Mutex to protect access to manual_input_
+            manual_input = i_manual_input_; // Assign manual input command
         }
     }
 
     interface::VehicleState current_vehicle_state; { // current_vehicle_state : Current state of the vehicle (position, velocity, etc.)
-        std::lock_guard<std::mutex> lock(vehicle_state_mutex_); // lock : Mutex to protect access to vehicle_state_
-        current_vehicle_state = vehicle_state_; // Assign current vehicle state
+        std::lock_guard<std::mutex> lock(mutex_vehicle_state_); // lock : Mutex to protect access to vehicle_state_
+        current_vehicle_state = i_vehicle_state_; // Assign current vehicle state
     }
 
     interface::Lane current_lane_points; { // current_lane_points : Lane points detected by the vehicle's sensors
-        std::lock_guard<std::mutex> lock(lane_points_mutex_); // lock : Mutex to protect access to lane_points_
-        current_lane_points = lane_points_; // Assign lane points
+        std::lock_guard<std::mutex> lock(mutex_lane_points_); // lock : Mutex to protect access to lane_points_
+        current_lane_points = i_lane_points_; // Assign lane points
     }
 
     interface::Mission current_mission; { // current_mission : Mission details (e.g., destination, speed limits)
-        std::lock_guard<std::mutex> lock(mission_mutex_); // lock : Mutex to protect access to mission_
-        current_mission = mission_; // Assign mission data
+        std::lock_guard<std::mutex> lock(mutex_mission_); // lock : Mutex to protect access to mission_
+        current_mission = i_mission_; // Assign mission data
     }
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
@@ -150,14 +145,14 @@ void AutonomousDriving::Run() {
     ////////////////////// TODO //////////////////////
     // TODO: Add polyfit lane algorithm
     interface::PolyfitLanes poly_lanes;
-    poly_lanes.frame_id = vehicle_namespace_param_ + "/body";
+    poly_lanes.frame_id = cfg_.vehicle_namespace + "/body";
 
     // TODO: Add find driving way algorithm
-    interface::PolyfitLane  driving_way;
-    driving_way.frame_id = vehicle_namespace_param_ + "/body";
+    interface::PolyfitLane driving_way;
+    driving_way.frame_id = cfg_.vehicle_namespace + "/body";
 
     // TODO: Add lateral and longitudinal control algorithm
-    interface::VehicleCommand command_to_vehicle;
+    interface::VehicleCommand vehicle_command;
 
     //////////////////////////////////////////////////
     // Lane detection and classification
@@ -165,7 +160,11 @@ void AutonomousDriving::Run() {
 
     // Filter and store all lane points
     for (const auto& point : current_lane_points.point) {
-        filtered_lane_points.push_back(point); // Add each point to the filtered list
+        geometry_msgs::msg::Point converted_point;
+        converted_point.x = point.x; // Assuming interface::Point2D has 'x' field
+        converted_point.y = point.y; // Assuming interface::Point2D has 'y' field
+        converted_point.z = 0.0;     // Set z value explicitly if needed
+        filtered_lane_points.push_back(converted_point); // Add to filtered_lane_points
     }
 
     RCLCPP_INFO(this->get_logger(), "Number of filtered points: %zu", filtered_lane_points.size());
@@ -220,15 +219,15 @@ void AutonomousDriving::Run() {
     //    If you do so, the Display node will visualize the lanes.
 
     // Perform polynomial fitting for left lane
-    Eigen::MatrixXd A(left_lane.size(), 4);  // A : Matrix for fitting the cubic polynomial for the left lane
-    Eigen::VectorXd b(left_lane.size()); // b : Vector for the y-coordinates of the left lane points
+    Eigen::MatrixXd A(left_lane_points.size(), 4);  // A : Matrix for fitting the cubic polynomial for the left lane
+    Eigen::VectorXd b(left_lane_points.size()); // b : Vector for the y-coordinates of the left lane points
 
     // Fill the matrix A and vector b with left lane points
-    for (size_t i = 0; i < left_lane.size(); ++i) {
+    for (size_t i = 0; i < left_lane_points.size(); ++i) {
 
-        double x = left_lane[i].x;
+        double x = left_lane_points[i].x;
 
-        b(i) = left_lane[i].y;
+        b(i) = left_lane_points[i].y;
 
         A(i, 0) = std::pow(x, 3);
         A(i, 1) = std::pow(x, 2);
@@ -240,12 +239,12 @@ void AutonomousDriving::Run() {
     Eigen::VectorXd left_coeffs = A.completeOrthogonalDecomposition().solve(b); // left_coeffs : Coefficients for the left lane polynomial
 
     // Perform polynomial fitting for right lane
-    Eigen::MatrixXd A_right(right_lane.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
-    Eigen::VectorXd b_right(right_lane.size()); // b_right : Vector for the y-coordinates of the right lane points
+    Eigen::MatrixXd A_right(right_lane_points.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
+    Eigen::VectorXd b_right(right_lane_points.size()); // b_right : Vector for the y-coordinates of the right lane points
 
-    for (size_t i = 0; i < right_lane.size(); ++i) {
-        double x = right_lane[i].x;
-        b_right(i) = right_lane[i].y;
+    for (size_t i = 0; i < right_lane_points.size(); ++i) {
+        double x = right_lane_points[i].x;
+        b_right(i) = right_lane_points[i].y;
         A_right(i, 0) = std::pow(x, 3);
         A_right(i, 1) = std::pow(x, 2);
         A_right(i, 2) = x;
@@ -255,12 +254,12 @@ void AutonomousDriving::Run() {
     Eigen::VectorXd right_coeffs = A_right.completeOrthogonalDecomposition().solve(b_right); // right_coeffs : Coefficients for the right lane polynomial
 
     // Store polynomial coefficients in PolyfitLaneData
-    ad_msgs::msg::PolyfitLaneData left_polyline, right_polyline;
+    interface::PolyfitLane left_polyline, right_polyline;
 
     // Set IDs or any unique identifiers for each lane fit
-    left_polyline.frame_id = param_vehicle_namespace_ + "/body"; // left_polyline.frame_id : Frame of reference for left lane polyline
+    left_polyline.frame_id = cfg_.vehicle_namespace + "/body"; // left_polyline.frame_id : Frame of reference for left lane polyline
     left_polyline.id = "1"; // left_polyline.id : Unique identifier for the left lane
-    right_polyline.frame_id = param_vehicle_namespace_ + "/body"; // right_polyline.frame_id : Frame of reference for right lane polyline
+    right_polyline.frame_id = cfg_.vehicle_namespace + "/body"; // right_polyline.frame_id : Frame of reference for right lane polyline
     right_polyline.id = "2"; // right_polyline.id : Unique identifier for the right lane
 
     // Assign coefficients to the left and right lane polylines
@@ -293,17 +292,17 @@ void AutonomousDriving::Run() {
         // Lateral control: Calculate steering angle based on Pure Pursuit
         //    You can tune your controller using the ros parameter.
         //    We provide the example of 'Pure Pursuit' parameters, so you can edit and use them.
-        double alpha = 0.5; // alpha: Smoothing factor for lateral error low-pass-filter
-        double limit_speed = mission.speed_limit
+        double limit_speed = current_mission.speed_limit;
+        min_speed = limit_speed;
 
         // Compute the original lateral_error
-        double lateral_error = driving_way.a0 * std::pow(param_m_Lookahead_distance, 3)
+        lateral_error = driving_way.a0 * std::pow(param_m_Lookahead_distance, 3)
                 + driving_way.a1 * std::pow(param_m_Lookahead_distance, 2)
                 + driving_way.a2 * param_m_Lookahead_distance
                 + driving_way.a3;
 
         // stop if out of track
-        if (filtered_points.size() == 0){
+        if (filtered_lane_points.size() == 0){
             vehicle_command.accel = 0.0;
             vehicle_command.brake = 1.0;
             lateral_error = last_lateral_error;        //maintain last steering
@@ -314,20 +313,20 @@ void AutonomousDriving::Run() {
         last_lateral_error = lateral_error;
 
         // Use filtered_e_ for steering calculation
-        double steering = atan((2 * param_pp_kd_ * e_) / (param_pp_kv_ * vehicle_state.velocity + param_pp_kc_));
+        double steering = atan((2 * param_pp_kd_ * lateral_error) / (param_pp_kv_ * current_vehicle_state.velocity + param_pp_kc_));
         vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);
 
         // Longitudinal control: Calculate acceleration/brake based on PID
         // Extract ego vehicle's position
-        double ego_x = vehicle_state.x;
-        double ego_y = vehicle_state.y;
+        double ego_x = current_vehicle_state.x;
+        double ego_y = current_vehicle_state.y;
 
         // obstacle distance calculation
         double min_distance = 100.0;
         double obs_velocity = 20.0;
 
-        if (obstacles.obstacles.size() > 1) {
-            const auto& obstacle = obstacles.obstacles[1];
+        if (current_mission.objects.size() > 1) {
+            const auto& obstacle = current_mission.objects[1];
             // Calculate the distance to the obstacle
             double delta_x = ego_x - obstacle.x;
             double delta_y = ego_y - obstacle.y;
@@ -348,14 +347,14 @@ void AutonomousDriving::Run() {
             }
 
         }   else{                                 // regular longitudinal control(PID + anti-windup)
-            target_speed = limit_speed - vehicle_state.velocity - 0.05 ;
+            target_speed = limit_speed - current_vehicle_state.velocity - 0.05 ;
         }
 
         if (steering > steering_threshold || steering < -steering_threshold) {
             target_speed = min_speed;
         }
 
-        speed_error = target_speed - vehicle_state.velocity;
+        speed_error = target_speed - current_vehicle_state.velocity;
 
         // interval = (current_time.seconds() - last_time.seconds());  // Calculate time interval between controls in seconds
         speed_error_integral_ = std::clamp(speed_error_integral_ + speed_error * interval, -integral_max, integral_max);
@@ -383,13 +382,9 @@ void AutonomousDriving::Run() {
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         // Update output
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-        o_driving_way_ = driving_way;
-        o_poly_lanes_ = poly_lanes;
-        o_vehicle_command_ = vehicle_command;
-        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-        // Publish output
-        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-        Publish(current_time);
+        // p_driving_way_ = driving_way;
+        // p_poly_lanes_ = poly_lanes;
+        // p_vehicle_command_ = vehicle_command;
 
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         // Publish output

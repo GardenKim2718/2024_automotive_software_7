@@ -27,6 +27,9 @@
 #include <cmath>
 #include <chrono>
 
+// algorithm Header
+#include <eigen3/Eigen/Dense>
+
 // Bridge Header
 #include "ros2_bridge_vehicle.hpp"
 #include "ros2_bridge_lane.hpp"
@@ -137,11 +140,15 @@ class AutonomousDriving : public rclcpp::Node {
         // Custom variables
         double speed_error           = 0.0;          // PID error
         // rclcpp::Time last_time;
+        double min_speed             = 3.0;
+        const double alpha           = 0.5;
+        const double steering_threshold = 0.18;
         double interval              = 0.01;
         const double integral_max    = 4.0;          // for anti-windup
         double param_m_Lookahead_distance = 0.8;     // look-ahead dist for pure pursuit
         const double pursuit_threshold     = 12.0;    // for obstacle scenario
         const double safe_distance         = 11.0;
+        double lateral_error             = 0.0;
         double last_lateral_error        = 0.0;
         const double max_steering_angle = 0.35;
         
