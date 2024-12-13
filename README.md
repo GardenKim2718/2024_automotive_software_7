@@ -42,6 +42,8 @@ Branch Description(Describe what this branch is made for)
 --------------
 Testing enhanced lane detection & fitting
 
+Trying Moving average filter
+
 Comments
 --------------
 ~~I uploaded the autonomous driving code from mid term.~~
@@ -55,5 +57,6 @@ The vehicle is now drivable.
 To use manual input for testing:
 
 -> install/autonomous_driving/share/autonomous_driving/launch/autonomous_driving.launch.xml
-
--> set: <arg name="use_manual_inputs" default="true" />
+'''
+<arg name="use_manual_inputs" default="true" />
+'''

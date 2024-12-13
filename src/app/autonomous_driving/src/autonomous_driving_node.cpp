@@ -233,29 +233,29 @@ void AutonomousDriving::Run() {
     //    If you do so, the Display node will visualize the lanes.
 
     // Perform polynomial fitting for left lane
-    Eigen::MatrixXd A_left(left_lane_points.size(), 4);  // A : Matrix for fitting the cubic polynomial for the left lane
-    Eigen::VectorXd b_left(left_lane_points.size()); // b : Vector for the y-coordinates of the left lane points
-    Eigen::MatrixXd A_right(right_lane_points.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
+    Eigen::MatrixXd A_left(left_lane_points.size(), 3);  // A_left : Matrix for fitting the cubic polynomial for the left lane
+    Eigen::VectorXd b_left(left_lane_points.size()); // b_left : Vector for the y-coordinates of the left lane points
+    Eigen::MatrixXd A_right(right_lane_points.size(), 3); // A_right : Matrix for fitting the cubic polynomial for the right lane
     Eigen::VectorXd b_right(right_lane_points.size()); // b_right : Vector for the y-coordinates of the right lane points
 
     // Fill the matrix A and vector b with left lane points
     for (size_t i = 0; i < left_lane_points.size(); ++i) {
         double x = left_lane_points[i].x;
         b_left(i) = left_lane_points[i].y;
+        A_left(i, 0) = 1.0;
+        A_left(i, 1) = x;
+        A_left(i, 2) = std::pow(x, 2);
         A_left(i, 0) = std::pow(x, 3);
-        A_left(i, 1) = std::pow(x, 2);
-        A_left(i, 2) = x;
-        A_left(i, 3) = 1.0;
     }
 
     // Fill the matrix A and vector b with right lane points
     for (size_t i = 0; i < right_lane_points.size(); ++i) {
         double x = right_lane_points[i].x;
         b_right(i) = right_lane_points[i].y;
-        A_right(i, 0) = std::pow(x, 3);
-        A_right(i, 1) = std::pow(x, 2);
-        A_right(i, 2) = x;
-        A_right(i, 3) = 1.0;
+        A_right(i, 0) = 1.0;
+        A_right(i, 1) = x;
+        A_right(i, 2) = std::pow(x, 2);
+        A_right(i, 3) = std::pow(x, 3);
     }
 
     // Polynomial fitting (3rd degree)
@@ -264,23 +264,21 @@ void AutonomousDriving::Run() {
 
     // Store polynomial coefficients in PolyfitLaneData
     interface::PolyfitLane left_polyline, right_polyline;
-
-    // Set IDs or any unique identifiers for each lane fit
     left_polyline.frame_id = cfg_.vehicle_namespace + "/body"; // left_polyline.frame_id : Frame of reference for left lane polyline
     left_polyline.id = "1"; // left_polyline.id : Unique identifier for the left lane
     right_polyline.frame_id = cfg_.vehicle_namespace + "/body"; // right_polyline.frame_id : Frame of reference for right lane polyline
     right_polyline.id = "2"; // right_polyline.id : Unique identifier for the right lane
 
     // Assign coefficients to the left and right lane polylines
-    left_polyline.a0 = left_coeffs(3);
-    left_polyline.a1 = left_coeffs(2);
-    left_polyline.a2 = left_coeffs(1);
-    left_polyline.a3 = left_coeffs(0);
+    left_polyline.a0 = left_coeffs(0);
+    left_polyline.a1 = left_coeffs(1);
+    left_polyline.a2 = left_coeffs(2);
+    left_polyline.a3 = left_coeffs(3);
 
-    right_polyline.a0 = right_coeffs(3);
-    right_polyline.a1 = right_coeffs(2);
-    right_polyline.a2 = right_coeffs(1);
-    right_polyline.a3 = right_coeffs(0);
+    right_polyline.a0 = right_coeffs(0);
+    right_polyline.a1 = right_coeffs(1);
+    right_polyline.a2 = right_coeffs(2);
+    right_polyline.a3 = right_coeffs(3);
 
     // Add the polylines to the poly_lanes' polyfitlanes list
     poly_lanes.polyfitlanes.push_back(left_polyline);
@@ -289,10 +287,10 @@ void AutonomousDriving::Run() {
     // Generate center driving lane as the average of left and right lanes
     //    The generated center line should be stored in the "driving_way".
     //    If you do so, the Display node will visualize the center line.
-    driving_way.a3 = (left_coeffs(0) + right_coeffs(0)) / 2.0;
-    driving_way.a2 = (left_coeffs(1) + right_coeffs(1)) / 2.0;
-    driving_way.a1 = (left_coeffs(2) + right_coeffs(2)) / 2.0;
-    driving_way.a0 = (left_coeffs(3) + right_coeffs(3)) / 2.0;
+    driving_way.a3 = (left_coeffs(3) + right_coeffs(3)) / 2.0;
+    driving_way.a2 = (left_coeffs(2) + right_coeffs(2)) / 2.0;
+    driving_way.a1 = (left_coeffs(1) + right_coeffs(1)) / 2.0;
+    driving_way.a0 = (left_coeffs(0) + right_coeffs(0)) / 2.0;
     
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
