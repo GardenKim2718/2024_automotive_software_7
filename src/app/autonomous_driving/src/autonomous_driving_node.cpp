@@ -233,9 +233,9 @@ void AutonomousDriving::Run() {
     //    If you do so, the Display node will visualize the lanes.
 
     // Perform polynomial fitting for left lane
-    Eigen::MatrixXd A_left(left_lane_points.size(), 3);  // A_left : Matrix for fitting the cubic polynomial for the left lane
+    Eigen::MatrixXd A_left(left_lane_points.size(), 4);  // A_left : Matrix for fitting the cubic polynomial for the left lane
     Eigen::VectorXd b_left(left_lane_points.size()); // b_left : Vector for the y-coordinates of the left lane points
-    Eigen::MatrixXd A_right(right_lane_points.size(), 3); // A_right : Matrix for fitting the cubic polynomial for the right lane
+    Eigen::MatrixXd A_right(right_lane_points.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
     Eigen::VectorXd b_right(right_lane_points.size()); // b_right : Vector for the y-coordinates of the right lane points
 
     // Fill the matrix A and vector b with left lane points
@@ -245,7 +245,7 @@ void AutonomousDriving::Run() {
         A_left(i, 0) = 1.0;
         A_left(i, 1) = x;
         A_left(i, 2) = std::pow(x, 2);
-        A_left(i, 0) = std::pow(x, 3);
+        A_left(i, 3) = std::pow(x, 3);
     }
 
     // Fill the matrix A and vector b with right lane points
