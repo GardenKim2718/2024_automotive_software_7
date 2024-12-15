@@ -77,6 +77,8 @@ class AutonomousDriving : public rclcpp::Node {
         ////////////////////// TODO //////////////////////
         // TODO: Add more functions
 
+        std::vector<double> generateSavitzkyGolayKernel(int window_size, int poly_order);
+        std::vector<double> applySavitzkyGolayFilter(const std::vector<double>& data, const std::vector<double>& kernel);
         //////////////////////////////////////////////////
 
         
@@ -139,6 +141,7 @@ class AutonomousDriving : public rclcpp::Node {
 
         // Custom variables
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
+        const double lane_displacement = 1.5;        //
         const double min_speed       = 3.0;          // minimum speed if steering exceeds steering_threshold
         const double alpha           = 0.5;
         const double steering_threshold = 0.18;      // steering threshold for triggering deceleration

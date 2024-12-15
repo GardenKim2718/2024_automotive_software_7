@@ -86,6 +86,47 @@ void AutonomousDriving::ProcessParams() {
     //////////////////////////////////////////////////
 }
 
+std::vector<double> AutonomousDriving::generateSavitzkyGolayKernel(int window_size, int poly_order) {
+    int half_window = window_size / 2;
+    Eigen::MatrixXd A(window_size, poly_order + 1);
+
+    // Fill the Vandermonde matrix
+    for (int i = -half_window; i <= half_window; ++i) {
+        for (int j = 0; j <= poly_order; ++j) {
+            A(i + half_window, j) = std::pow(i, j);
+        }
+    }
+
+    // Compute the pseudoinverse
+    Eigen::MatrixXd AtA = A.transpose() * A;
+    Eigen::MatrixXd At = A.transpose();
+    Eigen::MatrixXd pinv = AtA.ldlt().solve(At);
+
+    // Extract the middle row for the convolution kernel
+    std::vector<double> kernel(window_size);
+    for (int i = 0; i < window_size; ++i) {
+        kernel[i] = pinv(0, i); // Use the 0th row for smoothing
+    }
+    return kernel;
+}
+
+// Apply Savitzky-Golay filter to a data series
+std::vector<double> AutonomousDriving::applySavitzkyGolayFilter(const std::vector<double>& data, const std::vector<double>& kernel) {
+    int half_window = kernel.size() / 2;
+    std::vector<double> smoothed_data(data.size(), 0.0);
+
+    // Convolution with kernel
+    for (size_t i = 0; i < data.size(); ++i) {
+        double smoothed_value = 0.0;
+        for (int j = -half_window; j <= half_window; ++j) {
+            int index = std::clamp(static_cast<int>(i) + j, 0, static_cast<int>(data.size() - 1));
+            smoothed_value += data[index] * kernel[j + half_window];
+        }
+        smoothed_data[i] = smoothed_value;
+    }
+    return smoothed_data;
+}
+
 void AutonomousDriving::Run() {
     auto current_time = this->now(); // current_time : Current time of the system, unit: seconds
     RCLCPP_INFO_THROTTLE(this->get_logger(), *get_clock(), 1000, "Running ...");
@@ -210,7 +251,7 @@ void AutonomousDriving::Run() {
 
     // Assign subsequent points to lanes based on proximity
     for (const auto& point : filtered_lane_points) {
-        if (point.x > -1.0) { // Check if point is within the valid x range
+        if (point.x > -2.0) { // Check if point is within the valid x range
             // Check if this point belongs to the current right lane
             if ((std::abs(point.y - last_right_point.y) < lane_threshold) && !right_lane_points.empty()) {
                 right_lane_points.push_back(point); // Add to right lane
@@ -224,6 +265,43 @@ void AutonomousDriving::Run() {
         }
     }
 
+    std::vector<double> left_x, left_y, right_x, right_y;
+    for (const auto& point : left_lane_points) {
+        left_x.push_back(point.x);
+        left_y.push_back(point.y);
+    }
+    for (const auto& point : right_lane_points) {
+        right_x.push_back(point.x);
+        right_y.push_back(point.y);
+    }
+
+    // Generate Savitzky-Golay kernel
+    int window_size = 7;  // Odd number
+    int poly_order = 2;   // Cubic smoothing
+    auto kernel = generateSavitzkyGolayKernel(window_size, poly_order);
+
+    // Smooth lane points
+    std::vector<double> smoothed_left_x = applySavitzkyGolayFilter(left_x, kernel);
+    std::vector<double> smoothed_left_y = applySavitzkyGolayFilter(left_y, kernel);
+    std::vector<double> smoothed_right_x = applySavitzkyGolayFilter(right_x, kernel);
+    std::vector<double> smoothed_right_y = applySavitzkyGolayFilter(right_y, kernel);
+
+    // Replace original points with smoothed points
+    left_lane_points.clear();
+    right_lane_points.clear();
+    for (size_t i = 0; i < smoothed_left_x.size(); ++i) {
+        geometry_msgs::msg::Point point;
+        point.x = smoothed_left_x[i];
+        point.y = smoothed_left_y[i];
+        left_lane_points.push_back(point);
+    }
+    for (size_t i = 0; i < smoothed_right_x.size(); ++i) {
+        geometry_msgs::msg::Point point;
+        point.x = smoothed_right_x[i];
+        point.y = smoothed_right_y[i];
+        right_lane_points.push_back(point);
+    }
+
     RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
     RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
 
@@ -233,9 +311,9 @@ void AutonomousDriving::Run() {
     //    If you do so, the Display node will visualize the lanes.
 
     // Perform polynomial fitting for left lane
-    Eigen::MatrixXd A_left(left_lane_points.size(), 4);  // A_left : Matrix for fitting the cubic polynomial for the left lane
+    Eigen::MatrixXd A_left(left_lane_points.size(), 3);  // A_left : Matrix for fitting the cubic polynomial for the left lane
     Eigen::VectorXd b_left(left_lane_points.size()); // b_left : Vector for the y-coordinates of the left lane points
-    Eigen::MatrixXd A_right(right_lane_points.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
+    Eigen::MatrixXd A_right(right_lane_points.size(), 3); // A_right : Matrix for fitting the cubic polynomial for the right lane
     Eigen::VectorXd b_right(right_lane_points.size()); // b_right : Vector for the y-coordinates of the right lane points
 
     // Fill the matrix A and vector b with left lane points
@@ -245,7 +323,6 @@ void AutonomousDriving::Run() {
         A_left(i, 0) = 1.0;
         A_left(i, 1) = x;
         A_left(i, 2) = std::pow(x, 2);
-        A_left(i, 3) = std::pow(x, 3);
     }
 
     // Fill the matrix A and vector b with right lane points
@@ -255,7 +332,6 @@ void AutonomousDriving::Run() {
         A_right(i, 0) = 1.0;
         A_right(i, 1) = x;
         A_right(i, 2) = std::pow(x, 2);
-        A_right(i, 3) = std::pow(x, 3);
     }
 
     // Polynomial fitting (3rd degree)
@@ -273,12 +349,12 @@ void AutonomousDriving::Run() {
     left_polyline.a0 = left_coeffs(0);
     left_polyline.a1 = left_coeffs(1);
     left_polyline.a2 = left_coeffs(2);
-    left_polyline.a3 = left_coeffs(3);
+    left_polyline.a3 = 0.0;
 
     right_polyline.a0 = right_coeffs(0);
     right_polyline.a1 = right_coeffs(1);
     right_polyline.a2 = right_coeffs(2);
-    right_polyline.a3 = right_coeffs(3);
+    right_polyline.a3 = 0.0;
 
     // Add the polylines to the poly_lanes' polyfitlanes list
     poly_lanes.polyfitlanes.push_back(left_polyline);
@@ -290,7 +366,7 @@ void AutonomousDriving::Run() {
     driving_way.a3 = (left_coeffs(3) + right_coeffs(3)) / 2.0;
     driving_way.a2 = (left_coeffs(2) + right_coeffs(2)) / 2.0;
     driving_way.a1 = (left_coeffs(1) + right_coeffs(1)) / 2.0;
-    driving_way.a0 = (left_coeffs(0) + right_coeffs(0)) / 2.0;
+    driving_way.a0 = 0.0; //(left_coeffs(0) + right_coeffs(0)) / 2.0;
     
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
@@ -305,10 +381,10 @@ void AutonomousDriving::Run() {
         double limit_speed = current_mission.speed_limit;
 
         // Compute the original lateral_error
-        lateral_error = driving_way.a0 * std::pow(param_m_Lookahead_distance, 3)
-                + driving_way.a1 * std::pow(param_m_Lookahead_distance, 2)
-                + driving_way.a2 * param_m_Lookahead_distance
-                + driving_way.a3;
+        lateral_error = driving_way.a3 * std::pow(param_m_Lookahead_distance, 3)
+                + driving_way.a2 * std::pow(param_m_Lookahead_distance, 2)
+                + driving_way.a1 * param_m_Lookahead_distance
+                + driving_way.a0;
 
         // Apply the low-pass filter
         lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;
