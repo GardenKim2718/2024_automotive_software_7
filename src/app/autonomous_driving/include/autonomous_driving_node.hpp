@@ -76,9 +76,10 @@ class AutonomousDriving : public rclcpp::Node {
 
         ////////////////////// TODO //////////////////////
         // TODO: Add more functions
-
         std::vector<double> generateSavitzkyGolayKernel(int window_size, int poly_order);
         std::vector<double> applySavitzkyGolayFilter(const std::vector<double>& data, const std::vector<double>& kernel);
+        std::vector<std::vector<geometry_msgs::msg::Point>> dbscanClustering(
+            const std::vector<geometry_msgs::msg::Point>& points, double eps, int min_points, double x_weight);
         //////////////////////////////////////////////////
 
         

@@ -86,22 +86,79 @@ void AutonomousDriving::ProcessParams() {
     //////////////////////////////////////////////////
 }
 
+double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geometry_msgs::msg::Point& b, double x_weight) {
+    double dx = (a.x - b.x) * x_weight; // Weight the x-dimension
+    double dy = (a.y - b.y);            // Keep y-dimension as is
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+std::vector<std::vector<geometry_msgs::msg::Point>> AutonomousDriving::dbscanClustering(
+    const std::vector<geometry_msgs::msg::Point>& points, double eps, int min_points, double x_weight) {
+
+    std::vector<std::vector<geometry_msgs::msg::Point>> clusters;
+    std::vector<bool> visited(points.size(), false);
+    std::vector<bool> noise(points.size(), false);
+
+    // Neighborhood query with weighted distance
+    auto regionQuery = [&](size_t index) {
+        std::vector<size_t> neighbors;
+        for (size_t i = 0; i < points.size(); ++i) {
+            if (i != index && weightedEuclideanDistance(points[index], points[i], x_weight) <= eps) {
+                neighbors.push_back(i);
+            }
+        }
+        return neighbors;
+    };
+
+    // Expand cluster
+    auto expandCluster = [&](size_t index, std::vector<size_t> neighbors, std::vector<bool>& visited) {
+        std::vector<geometry_msgs::msg::Point> cluster;
+        cluster.push_back(points[index]);
+        visited[index] = true;
+
+        for (size_t i = 0; i < neighbors.size(); ++i) {
+            size_t neighbor_index = neighbors[i];
+            if (!visited[neighbor_index]) {
+                visited[neighbor_index] = true;
+                auto sub_neighbors = regionQuery(neighbor_index);
+                if (sub_neighbors.size() >= static_cast<size_t>(min_points)) {
+                    neighbors.insert(neighbors.end(), sub_neighbors.begin(), sub_neighbors.end());
+                }
+            }
+            if (!noise[neighbor_index]) {
+                cluster.push_back(points[neighbor_index]);
+                noise[neighbor_index] = true;
+            }
+        }
+        clusters.push_back(cluster);
+    };
+
+    for (size_t i = 0; i < points.size(); ++i) {
+        if (visited[i]) continue;
+
+        auto neighbors = regionQuery(i);
+        if (neighbors.size() < static_cast<size_t>(min_points)) {
+            noise[i] = true;
+        } else {
+            expandCluster(i, neighbors, visited);
+        }
+    }
+    return clusters;
+}
+
 std::vector<double> AutonomousDriving::generateSavitzkyGolayKernel(int window_size, int poly_order) {
     int half_window = window_size / 2;
     Eigen::MatrixXd A(window_size, poly_order + 1);
-
     // Fill the Vandermonde matrix
     for (int i = -half_window; i <= half_window; ++i) {
         for (int j = 0; j <= poly_order; ++j) {
             A(i + half_window, j) = std::pow(i, j);
         }
     }
-
     // Compute the pseudoinverse
     Eigen::MatrixXd AtA = A.transpose() * A;
     Eigen::MatrixXd At = A.transpose();
     Eigen::MatrixXd pinv = AtA.ldlt().solve(At);
-
     // Extract the middle row for the convolution kernel
     std::vector<double> kernel(window_size);
     for (int i = 0; i < window_size; ++i) {
@@ -109,12 +166,10 @@ std::vector<double> AutonomousDriving::generateSavitzkyGolayKernel(int window_si
     }
     return kernel;
 }
-
 // Apply Savitzky-Golay filter to a data series
 std::vector<double> AutonomousDriving::applySavitzkyGolayFilter(const std::vector<double>& data, const std::vector<double>& kernel) {
     int half_window = kernel.size() / 2;
     std::vector<double> smoothed_data(data.size(), 0.0);
-
     // Convolution with kernel
     for (size_t i = 0; i < data.size(); ++i) {
         double smoothed_value = 0.0;
@@ -204,7 +259,6 @@ void AutonomousDriving::Run() {
         geometry_msgs::msg::Point converted_point;
         converted_point.x = point.x; // Assuming interface::Point2D has 'x' field
         converted_point.y = point.y; // Assuming interface::Point2D has 'y' field
-        converted_point.z = 0.0;     // Set z value explicitly if needed
         filtered_lane_points.push_back(converted_point); // Add to filtered_lane_points
     }
 
@@ -215,56 +269,49 @@ void AutonomousDriving::Run() {
         return a.x < b.x;
     });
 
-    // Classify lane points into right and left lanes
-    std::vector<geometry_msgs::msg::Point> right_lane_points, left_lane_points; // right_lane_points : Points belonging to the right lane, left_lane_points : Points belonging to the left lane
-    geometry_msgs::msg::Point last_left_point, last_right_point; // last_left_point : Last point in the left lane, last_right_point : Last point in the right lane
+    std::vector<geometry_msgs::msg::Point> potential_left, potential_right;
 
-    // Initial classification of lane points
     for (const auto& point : filtered_lane_points) {
-        if (point.x > -1.0 && point.x < 5.0) { // Check if point is within the valid x range
-            if (right_lane_points.empty() && left_lane_points.empty()){ // if both lanes have not been detected
-                if (point.y < 0) {
-                    right_lane_points.push_back(point); // Assign to right lane
-                    last_right_point = point; // Update last right point
-                } else if (point.y > 0) {
-                    left_lane_points.push_back(point); // Assign to left lane
-                    last_left_point = point; // Update last left point
-                }
-            }
-            else if (!right_lane_points.empty() && left_lane_points.empty()){ // if right_lane is detected but left is undetected
-                if (point.y > 0 && point.y > (last_right_point.y + lane_threshold)) {
-                    left_lane_points.push_back(point); // Assign to left lane
-                    last_left_point = point; // Update last left point
-                }
-            }
-            else if (right_lane_points.empty() && !left_lane_points.empty()){  // if left lane is detected but right is undetected
-                if (point.y < 0 && point.y < (last_left_point.y - lane_threshold)) {
-                    right_lane_points.push_back(point); // Assign to left lane
-                    last_left_point = point; // Update last left point
-                }
-            }
-            else{ 
-                break; // Break if initial points for both lanes are found
+        if (point.x > -5.0 && point.x < 5.0) { // Valid x range
+            if (point.y < 0) {
+                potential_right.push_back(point); // Points likely on the right lane
+            } else if (point.y > 0) {
+                potential_left.push_back(point);  // Points likely on the left lane
             }
         }
     }
 
-    // Assign subsequent points to lanes based on proximity
-    for (const auto& point : filtered_lane_points) {
-        if (point.x > -2.0) { // Check if point is within the valid x range
-            // Check if this point belongs to the current right lane
-            if ((std::abs(point.y - last_right_point.y) < lane_threshold) && !right_lane_points.empty()) {
-                right_lane_points.push_back(point); // Add to right lane
-                last_right_point = point; // Update the last right lane point
-            }
-            // Check if this point belongs to the current left lane
-            else if ((std::abs(point.y - last_left_point.y) < lane_threshold) && !left_lane_points.empty()) {
-                left_lane_points.push_back(point); // Add to left lane
-                last_left_point = point; // Update the last left lane point
-            }
-        }
+    // DBSCAN algorithm
+    double eps = 5.0;      // Maximum distance for a point to be considered part of a cluster
+    double x_weight = 0.1; // Weight for x-dimension
+    int min_points = 3;    // Minimum number of points to form a cluster
+
+    auto left_clusters = dbscanClustering(potential_left, eps, min_points, x_weight);
+    auto right_clusters = dbscanClustering(potential_right, eps, min_points, x_weight);
+
+    std::vector<geometry_msgs::msg::Point> left_lane_points, right_lane_points;
+
+    if (!left_clusters.empty()) {
+        // Find the largest cluster in left_clusters
+        auto max_left_cluster = *std::max_element(
+            left_clusters.begin(), left_clusters.end(),
+            [](const auto& a, const auto& b) { return a.size() < b.size(); });
+        
+        // Flatten the largest cluster into left_lane_points
+        left_lane_points.insert(left_lane_points.end(), max_left_cluster.begin(), max_left_cluster.end());
     }
 
+    if (!right_clusters.empty()) {
+        // Find the largest cluster in right_clusters
+        auto max_right_cluster = *std::max_element(
+            right_clusters.begin(), right_clusters.end(),
+            [](const auto& a, const auto& b) { return a.size() < b.size(); });
+        
+        // Flatten the largest cluster into right_lane_points
+        right_lane_points.insert(right_lane_points.end(), max_right_cluster.begin(), max_right_cluster.end());
+    }
+
+    // Savitzky-Golay filter
     std::vector<double> left_x, left_y, right_x, right_y;
     for (const auto& point : left_lane_points) {
         left_x.push_back(point.x);
@@ -285,7 +332,6 @@ void AutonomousDriving::Run() {
     std::vector<double> smoothed_left_y = applySavitzkyGolayFilter(left_y, kernel);
     std::vector<double> smoothed_right_x = applySavitzkyGolayFilter(right_x, kernel);
     std::vector<double> smoothed_right_y = applySavitzkyGolayFilter(right_y, kernel);
-
     // Replace original points with smoothed points
     left_lane_points.clear();
     right_lane_points.clear();
@@ -334,7 +380,7 @@ void AutonomousDriving::Run() {
         A_right(i, 2) = std::pow(x, 2);
     }
 
-    // Polynomial fitting (3rd degree)
+    // Polynomial fitting (quadratic)
     Eigen::VectorXd left_coeffs = A_left.completeOrthogonalDecomposition().solve(b_left); // left_coeffs : Coefficients for the left lane polynomial
     Eigen::VectorXd right_coeffs = A_right.completeOrthogonalDecomposition().solve(b_right); // right_coeffs : Coefficients for the right lane polynomial
 
