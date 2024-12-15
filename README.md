@@ -37,6 +37,9 @@ Update
 
 TO DO
 --------------
+This branch is based on our mid-term project.
+
+We intend to preserve the our old work for recovery & comparison.
 
 Comments
 --------------
