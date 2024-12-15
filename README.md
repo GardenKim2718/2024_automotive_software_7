@@ -33,17 +33,25 @@ Coding Guidelines
 Update
 --------------
 2024-12-06  Updated for coding guideline homework
-2024-12-13  Code fix
+
+2024-12-13  Code fix (now working)
+
+2024-12-15  Introduced DBSCAN algorithm and Savitzky-Golay filter within Lane Detection
 
 TO DO
 --------------
 
+Branch Description(Describe what this branch is made for)
+--------------
+Testing enhanced lane detection & fitting
+
+Trying Moving average filter
+
 Comments
 --------------
-~~I uploaded the autonomous driving code from mid term.~~
 
-~~However, it seems that the formats and variables have changed alot from mid-term.~~
+To use manual input for testing:
 
-~~The code will not be able to build for now.~~
+-> install/autonomous_driving/share/autonomous_driving/launch/autonomous_driving.launch.xml
 
-The vehicle is now drivable.
+\<set: arg name="use_manual_inputs" default="true" \/\>

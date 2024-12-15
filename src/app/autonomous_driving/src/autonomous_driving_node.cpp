@@ -20,6 +20,8 @@
  * 2024-12-06 Seokhui Han updated variable names
  * 2024-12-06 Chungwon Kim updated code to abide coding guideline
  * 2024-12-06 Chungwon Kim code fix and lane_fitting update
+ * 2024-12-06 Chungwon Kim testing improved lane fitting algorithm
+ * 2024-12-15 Chungwon Kim introduced DBSCAN algorithm and Savitzky-Golay filter within Lane Detection
  */
 
 #include "autonomous_driving_node.hpp"
@@ -83,6 +85,102 @@ void AutonomousDriving::ProcessParams() {
     // TODO: Add more parameters
 
     //////////////////////////////////////////////////
+}
+
+double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geometry_msgs::msg::Point& b, double x_weight) {
+    double dx = (a.x - b.x) * x_weight; // Weight the x-dimension
+    double dy = (a.y - b.y);            // Keep y-dimension as is
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+std::vector<std::vector<geometry_msgs::msg::Point>> AutonomousDriving::dbscanClustering(
+    const std::vector<geometry_msgs::msg::Point>& points, double eps, int min_points, double x_weight) {
+
+    std::vector<std::vector<geometry_msgs::msg::Point>> clusters;
+    std::vector<bool> visited(points.size(), false);
+    std::vector<bool> noise(points.size(), false);
+
+    // Neighborhood query with weighted distance
+    auto regionQuery = [&](size_t index) {
+        std::vector<size_t> neighbors;
+        for (size_t i = 0; i < points.size(); ++i) {
+            if (i != index && weightedEuclideanDistance(points[index], points[i], x_weight) <= eps) {
+                neighbors.push_back(i);
+            }
+        }
+        return neighbors;
+    };
+
+    // Expand cluster
+    auto expandCluster = [&](size_t index, std::vector<size_t> neighbors, std::vector<bool>& visited) {
+        std::vector<geometry_msgs::msg::Point> cluster;
+        cluster.push_back(points[index]);
+        visited[index] = true;
+
+        for (size_t i = 0; i < neighbors.size(); ++i) {
+            size_t neighbor_index = neighbors[i];
+            if (!visited[neighbor_index]) {
+                visited[neighbor_index] = true;
+                auto sub_neighbors = regionQuery(neighbor_index);
+                if (sub_neighbors.size() >= static_cast<size_t>(min_points)) {
+                    neighbors.insert(neighbors.end(), sub_neighbors.begin(), sub_neighbors.end());
+                }
+            }
+            if (!noise[neighbor_index]) {
+                cluster.push_back(points[neighbor_index]);
+                noise[neighbor_index] = true;
+            }
+        }
+        clusters.push_back(cluster);
+    };
+
+    for (size_t i = 0; i < points.size(); ++i) {
+        if (visited[i]) continue;
+
+        auto neighbors = regionQuery(i);
+        if (neighbors.size() < static_cast<size_t>(min_points)) {
+            noise[i] = true;
+        } else {
+            expandCluster(i, neighbors, visited);
+        }
+    }
+    return clusters;
+}
+
+std::vector<double> AutonomousDriving::generateSavitzkyGolayKernel(int window_size, int poly_order) {
+    int half_window = window_size / 2;
+    Eigen::MatrixXd A(window_size, poly_order + 1);
+    // Fill the Vandermonde matrix
+    for (int i = -half_window; i <= half_window; ++i) {
+        for (int j = 0; j <= poly_order; ++j) {
+            A(i + half_window, j) = std::pow(i, j);
+        }
+    }
+    // Compute the pseudoinverse
+    Eigen::MatrixXd AtA = A.transpose() * A;
+    Eigen::MatrixXd At = A.transpose();
+    Eigen::MatrixXd pinv = AtA.ldlt().solve(At);
+    // Extract the middle row for the convolution kernel
+    std::vector<double> kernel(window_size);
+    for (int i = 0; i < window_size; ++i) {
+        kernel[i] = pinv(0, i); // Use the 0th row for smoothing
+    }
+    return kernel;
+}
+// Apply Savitzky-Golay filter to a data series
+std::vector<double> AutonomousDriving::applySavitzkyGolayFilter(const std::vector<double>& data, const std::vector<double>& kernel) {
+    int half_window = kernel.size() / 2;
+    std::vector<double> smoothed_data(data.size(), 0.0);
+    // Convolution with kernel
+    for (size_t i = 0; i < data.size(); ++i) {
+        double smoothed_value = 0.0;
+        for (int j = -half_window; j <= half_window; ++j) {
+            int index = std::clamp(static_cast<int>(i) + j, 0, static_cast<int>(data.size() - 1));
+            smoothed_value += data[index] * kernel[j + half_window];
+        }
+        smoothed_data[i] = smoothed_value;
+    }
+    return smoothed_data;
 }
 
 void AutonomousDriving::Run() {
@@ -154,8 +252,7 @@ void AutonomousDriving::Run() {
     // TODO: Add lateral and longitudinal control algorithm
     interface::VehicleCommand vehicle_command;
 
-    //////////////////////////////////////////////////
-    // Lane detection and classification
+    /* >>>>>>> Lane Detection <<<<<<<*/
     std::vector<geometry_msgs::msg::Point> filtered_lane_points; // filtered_lane_points : List of lane points after filtering
 
     // Filter and store all lane points
@@ -163,7 +260,6 @@ void AutonomousDriving::Run() {
         geometry_msgs::msg::Point converted_point;
         converted_point.x = point.x; // Assuming interface::Point2D has 'x' field
         converted_point.y = point.y; // Assuming interface::Point2D has 'y' field
-        converted_point.z = 0.0;     // Set z value explicitly if needed
         filtered_lane_points.push_back(converted_point); // Add to filtered_lane_points
     }
 
@@ -174,138 +270,212 @@ void AutonomousDriving::Run() {
         return a.x < b.x;
     });
 
-    // Classify lane points into right and left lanes
-    const double lane_threshold = 2.0; // lane_threshold : Threshold for classifying points as left or right lane
+    std::vector<geometry_msgs::msg::Point> potential_left, potential_right;
 
-    std::vector<geometry_msgs::msg::Point> right_lane_points, left_lane_points; // right_lane_points : Points belonging to the right lane, left_lane_points : Points belonging to the left lane
-    geometry_msgs::msg::Point last_left_point, last_right_point; // last_left_point : Last point in the left lane, last_right_point : Last point in the right lane
-
-    // Initial classification of lane points
     for (const auto& point : filtered_lane_points) {
-        if (point.x > -1.0 && point.x < 2.0) { // Check if point is within the valid x range
-            if (right_lane_points.empty() && point.y < 0) {
-                right_lane_points.push_back(point); // Assign to right lane
-                last_right_point = point; // Update last right point
-            } else if (left_lane_points.empty() && point.y > 0) {
-                left_lane_points.push_back(point); // Assign to left lane
-                last_left_point = point; // Update last left point
-            }
-            // Break if initial points for both lanes are found
-            if (!right_lane_points.empty() && !left_lane_points.empty()) {
-                break;
+        if (point.x > -5.0 && point.x < 5.0) { // Valid x range
+            if (point.y < 0) {
+                potential_right.push_back(point); // Points likely on the right lane
+            } else if (point.y > 0) {
+                potential_left.push_back(point);  // Points likely on the left lane
             }
         }
     }
 
-    // Assign subsequent points to lanes based on proximity
-    for (const auto& point : filtered_lane_points) {
-        // Check if this point belongs to the current right lane
-        if (std::abs(point.y - last_right_point.y) < lane_threshold) {
-            right_lane_points.push_back(point); // Add to right lane
-            last_right_point = point; // Update the last right lane point
-        } 
-        // Check if this point belongs to the current left lane
-        else if (std::abs(point.y - last_left_point.y) < lane_threshold) {
-            left_lane_points.push_back(point); // Add to left lane
-            last_left_point = point; // Update the last left lane point
-        }
+    // run DBSCAN for Lane Detection
+    auto left_clusters = dbscanClustering(potential_left, eps, min_points, x_weight);
+    auto right_clusters = dbscanClustering(potential_right, eps, min_points, x_weight);
+
+    std::vector<geometry_msgs::msg::Point> left_lane_points, right_lane_points;
+
+    if (!left_clusters.empty()) {
+        // Find the largest cluster in left_clusters
+        auto max_left_cluster = *std::max_element(
+            left_clusters.begin(), left_clusters.end(),
+            [](const auto& a, const auto& b) { return a.size() < b.size(); });
+        
+        // Flatten the largest cluster into left_lane_points
+        left_lane_points.insert(left_lane_points.end(), max_left_cluster.begin(), max_left_cluster.end());
     }
+
+    if (!right_clusters.empty()) {
+        // Find the largest cluster in right_clusters
+        auto max_right_cluster = *std::max_element(
+            right_clusters.begin(), right_clusters.end(),
+            [](const auto& a, const auto& b) { return a.size() < b.size(); });
+        
+        // Flatten the largest cluster into right_lane_points
+        right_lane_points.insert(right_lane_points.end(), max_right_cluster.begin(), max_right_cluster.end());
+    }
+
+    // Savitzky-Golay filter
+    std::vector<double> left_x, left_y, right_x, right_y;
+    for (const auto& point : left_lane_points) {
+        left_x.push_back(point.x);
+        left_y.push_back(point.y);
+    }
+    for (const auto& point : right_lane_points) {
+        right_x.push_back(point.x);
+        right_y.push_back(point.y);
+    }
+
+    // Generate Savitzky-Golay kernel
+    int window_size = 7;  // Odd number
+    int poly_order = 2;   // Cubic smoothing
+    auto kernel = generateSavitzkyGolayKernel(window_size, poly_order);
+
+    // Smooth lane points
+    std::vector<double> smoothed_left_x = applySavitzkyGolayFilter(left_x, kernel);
+    std::vector<double> smoothed_left_y = applySavitzkyGolayFilter(left_y, kernel);
+    std::vector<double> smoothed_right_x = applySavitzkyGolayFilter(right_x, kernel);
+    std::vector<double> smoothed_right_y = applySavitzkyGolayFilter(right_y, kernel);
+    // Replace original points with smoothed points
+    left_lane_points.clear();
+    right_lane_points.clear();
+    for (size_t i = 0; i < smoothed_left_x.size(); ++i) {
+        geometry_msgs::msg::Point point;
+        point.x = smoothed_left_x[i];
+        point.y = smoothed_left_y[i];
+        left_lane_points.push_back(point);
+    }
+    for (size_t i = 0; i < smoothed_right_x.size(); ++i) {
+        geometry_msgs::msg::Point point;
+        point.x = smoothed_right_x[i];
+        point.y = smoothed_right_y[i];
+        right_lane_points.push_back(point);
+    }
+
+    b_is_left_lane_empty = left_lane_points.empty();
+    b_is_right_lane_empty = right_lane_points.empty();
 
     RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
     RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
 
-    //    With divided points, you can curve fit the lane and find the left, right lane.
+    /* >>>>>>> Lane Fitting <<<<<<<*/
+    //    With classified points, you can curve fit the lane and find the left, right lane.
     //    The generated left and right lane should be stored in the "poly_lanes".
     //    If you do so, the Display node will visualize the lanes.
 
     // Perform polynomial fitting for left lane
-    Eigen::MatrixXd A(left_lane_points.size(), 4);  // A : Matrix for fitting the cubic polynomial for the left lane
-    Eigen::VectorXd b(left_lane_points.size()); // b : Vector for the y-coordinates of the left lane points
-
-    // Fill the matrix A and vector b with left lane points
-    for (size_t i = 0; i < left_lane_points.size(); ++i) {
-
-        double x = left_lane_points[i].x;
-
-        b(i) = left_lane_points[i].y;
-
-        A(i, 0) = std::pow(x, 3);
-        A(i, 1) = std::pow(x, 2);
-        A(i, 2) = x;
-        A(i, 3) = 1.0;
-    }
-
-    // Calculate the coefficients for the left lane using pseudo inverse
-    Eigen::VectorXd left_coeffs = A.completeOrthogonalDecomposition().solve(b); // left_coeffs : Coefficients for the left lane polynomial
-
-    // Perform polynomial fitting for right lane
-    Eigen::MatrixXd A_right(right_lane_points.size(), 4); // A_right : Matrix for fitting the cubic polynomial for the right lane
-    Eigen::VectorXd b_right(right_lane_points.size()); // b_right : Vector for the y-coordinates of the right lane points
-
-    for (size_t i = 0; i < right_lane_points.size(); ++i) {
-        double x = right_lane_points[i].x;
-        b_right(i) = right_lane_points[i].y;
-        A_right(i, 0) = std::pow(x, 3);
-        A_right(i, 1) = std::pow(x, 2);
-        A_right(i, 2) = x;
-        A_right(i, 3) = 1.0;
-    }
-
-    Eigen::VectorXd right_coeffs = A_right.completeOrthogonalDecomposition().solve(b_right); // right_coeffs : Coefficients for the right lane polynomial
-
-    // Store polynomial coefficients in PolyfitLaneData
+    Eigen::MatrixXd A_left(left_lane_points.size(), 3);  // A_left : Matrix for fitting the cubic polynomial for the left lane
+    Eigen::VectorXd B_left(left_lane_points.size()); // b_left : Vector for the y-coordinates of the left lane points
+    Eigen::MatrixXd A_right(right_lane_points.size(), 3); // A_right : Matrix for fitting the cubic polynomial for the right lane
+    Eigen::VectorXd B_right(right_lane_points.size()); // b_right : Vector for the y-coordinates of the right lane points
+    Eigen::VectorXd left_coeffs, right_coeffs;
     interface::PolyfitLane left_polyline, right_polyline;
-
-    // Set IDs or any unique identifiers for each lane fit
+    
     left_polyline.frame_id = cfg_.vehicle_namespace + "/body"; // left_polyline.frame_id : Frame of reference for left lane polyline
     left_polyline.id = "1"; // left_polyline.id : Unique identifier for the left lane
     right_polyline.frame_id = cfg_.vehicle_namespace + "/body"; // right_polyline.frame_id : Frame of reference for right lane polyline
     right_polyline.id = "2"; // right_polyline.id : Unique identifier for the right lane
 
-    // Assign coefficients to the left and right lane polylines
-    left_polyline.a0 = left_coeffs(3);
-    left_polyline.a1 = left_coeffs(2);
-    left_polyline.a2 = left_coeffs(1);
-    left_polyline.a3 = left_coeffs(0);
+    // if lane points are not empty, execute polynomial(quadratic) fitting
+    if (!b_is_left_lane_empty) {
+        for (size_t i = 0; i < left_lane_points.size(); ++i) {
+            double x = left_lane_points[i].x;
+            B_left(i) = left_lane_points[i].y;
+            A_left(i, 0) = 1.0;
+            A_left(i, 1) = x;
+            A_left(i, 2) = std::pow(x, 2);
+        }
+        left_coeffs = A_left.completeOrthogonalDecomposition().solve(B_left); // left_coeffs : Coefficients for the left lane polynomial
+        left_polyline.a0 = left_coeffs(0);
+        left_polyline.a1 = left_coeffs(1);
+        left_polyline.a2 = left_coeffs(2);
+        left_polyline.a3 = 0.0;
+    }
 
-    right_polyline.a0 = right_coeffs(3);
-    right_polyline.a1 = right_coeffs(2);
-    right_polyline.a2 = right_coeffs(1);
-    right_polyline.a3 = right_coeffs(0);
+    if (!b_is_right_lane_empty) {
+        for (size_t i = 0; i < right_lane_points.size(); ++i) {
+            double x = right_lane_points[i].x;
+            B_right(i) = right_lane_points[i].y;
+            A_right(i, 0) = 1.0;
+            A_right(i, 1) = x;
+            A_right(i, 2) = std::pow(x, 2);
+        }
+        right_coeffs = A_right.completeOrthogonalDecomposition().solve(B_right); // right_coeffs : Coefficients for the right lane polynomial
+        right_polyline.a0 = right_coeffs(0);
+        right_polyline.a1 = right_coeffs(1);
+        right_polyline.a2 = right_coeffs(2);
+        right_polyline.a3 = 0.0;
+    }
+
+    // if one lane is empty, fill it with the other
+    if (b_is_left_lane_empty && !b_is_right_lane_empty) {
+        left_polyline.a0 = right_coeffs(0) + lane_width;
+        left_polyline.a1 = right_coeffs(1);
+        left_polyline.a2 = right_coeffs(2);
+        left_polyline.a3 = 0.0;
+    }
+
+    if (!b_is_left_lane_empty && b_is_right_lane_empty) {
+        right_polyline.a0 = left_coeffs(0) - lane_width;
+        right_polyline.a1 = left_coeffs(1);
+        right_polyline.a2 = left_coeffs(2);
+        right_polyline.a3 = 0.0;
+    }
+    // if both lanes are empty just maintain course
+    if (b_is_left_lane_empty && b_is_right_lane_empty) {
+        RCLCPP_INFO(this->get_logger(), "NO Lane Detected!!!");
+        left_polyline.a0 = lane_width/2;
+        left_polyline.a1 = 0.0;
+        left_polyline.a2 = 0.0;
+        left_polyline.a3 = 0.0;
+        right_polyline.a0 = -lane_width/2;
+        right_polyline.a1 = 0.0;
+        right_polyline.a2 = 0.0;
+        right_polyline.a3 = 0.0;
+    }
+
+    // Verify both lanes show similar coefficients
+    if (!b_is_left_lane_empty && !b_is_right_lane_empty) {
+        const double fit_tolerance = 1.5; // Define a tolerance threshold for slope comparison
+        double left_slope = 2 * left_coeffs(2) * param_m_Lookahead_distance + left_coeffs(1);  // Slope = 2*a2*x + a1 for quadratic polynomial
+        double right_slope = 2 * right_coeffs(2) * param_m_Lookahead_distance + right_coeffs(1);  // Slope = 2*a2*x + a1 for quadratic polynomial
+        double slope_diff = left_slope - right_slope; // Compute the difference between the slopes of the left and right lanes
+
+        // Check if the slope difference is greater than the tolerance threshold
+        if (std::abs(slope_diff) > fit_tolerance) {
+            if (std::abs(left_slope) > std::abs(right_slope)) { // If the left slope is much steeper (greater absolute value) than the right slope
+                // Adjust the left lane's coefficients to match the right lane's coefficients
+                left_polyline.a1 = right_polyline.a1;  // Copy the slope of the right lane to the left lane
+                left_polyline.a2 = right_polyline.a2;  // Copy the curvature of the right lane to the left lane
+            }
+            else { // If the right slope is much steeper (greater absolute value) than the left slope
+                // Adjust the right lane's coefficients to match the left lane's coefficients
+                right_polyline.a1 = left_polyline.a1;  // Copy the slope of the left lane to the right lane
+                right_polyline.a2 = left_polyline.a2;  // Copy the curvature of the left lane to the right lane
+            }
+        }
+    }
 
     // Add the polylines to the poly_lanes' polyfitlanes list
     poly_lanes.polyfitlanes.push_back(left_polyline);
     poly_lanes.polyfitlanes.push_back(right_polyline);
 
     // Generate center driving lane as the average of left and right lanes
-    //    The generated center line should be stored in the "driving_way".
-    //    If you do so, the Display node will visualize the center line.
-    driving_way.a3 = (left_coeffs(0) + right_coeffs(0)) / 2.0;
-    driving_way.a2 = (left_coeffs(1) + right_coeffs(1)) / 2.0;
-    driving_way.a1 = (left_coeffs(2) + right_coeffs(2)) / 2.0;
-    driving_way.a0 = (left_coeffs(3) + right_coeffs(3)) / 2.0;
-    
-    RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", 
-    driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
+    driving_way.a3 = (left_polyline.a3 + right_polyline.a3) / 2.0;
+    driving_way.a2 = (left_polyline.a2 + right_polyline.a2) / 2.0;
+    driving_way.a1 = (left_polyline.a1 + right_polyline.a1) / 2.0;
+    driving_way.a0 = (left_polyline.a0 + right_polyline.a0) / 2.0;
+    // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
-    if (cfg_.use_manual_inputs == false) {
+    // If using manual input
+    if (cfg_.use_manual_inputs == true) {
+        vehicle_command = manual_input;
+    }
+    else { // Autonomous driving //
+
         // Lateral control: Calculate steering angle based on Pure Pursuit
         //    You can tune your controller using the ros parameter.
         //    We provide the example of 'Pure Pursuit' parameters, so you can edit and use them.
         double limit_speed = current_mission.speed_limit;
 
         // Compute the original lateral_error
-        lateral_error = driving_way.a0 * std::pow(param_m_Lookahead_distance, 3)
-                + driving_way.a1 * std::pow(param_m_Lookahead_distance, 2)
-                + driving_way.a2 * param_m_Lookahead_distance
-                + driving_way.a3;
-
-        // stop if out of track
-        if (filtered_lane_points.size() == 0){
-            vehicle_command.accel = 0.0;
-            vehicle_command.brake = 1.0;
-            lateral_error = last_lateral_error;        //maintain last steering
-        }
+        lateral_error = driving_way.a3 * std::pow(param_m_Lookahead_distance, 3)
+                + driving_way.a2 * std::pow(param_m_Lookahead_distance, 2)
+                + driving_way.a1 * param_m_Lookahead_distance
+                + driving_way.a0;
 
         // Apply the low-pass filter
         lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;
@@ -333,7 +503,7 @@ void AutonomousDriving::Run() {
             obs_velocity = obstacle.velocity;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Min distance: %.2f", min_distance);
+        // RCLCPP_INFO(this->get_logger(), "Min distance: %.2f", min_distance);
 
         double target_speed = 0;
 
@@ -341,11 +511,12 @@ void AutonomousDriving::Run() {
             // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
             if (min_distance < safe_distance){
                 target_speed = std::clamp( obs_velocity - 3.5, min_speed, limit_speed - 0.05);
-            } else{
+            }
+            else{
                 target_speed = std::clamp( obs_velocity + 2.0 , min_speed ,limit_speed - 0.05);
             }
-
-        }   else{  // regular longitudinal control(PID + anti-windup)
+        }
+        else{  // regular longitudinal control(PID + anti-windup)
             target_speed = limit_speed - current_vehicle_state.velocity - 0.05 ;
         }
 
@@ -378,19 +549,13 @@ void AutonomousDriving::Run() {
 
         RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
              vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
-
-        // Publish output
-        // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-        p_vehicle_command_->publish(ros2_bridge::UpdateVehicleCommand(vehicle_command));
-        p_driving_way_->publish(ros2_bridge::UpdatePolyfitLane(driving_way));
-        p_poly_lanes_->publish(ros2_bridge::UpdatePolyfitLanes(poly_lanes));
     }
 
-    // Using Manual Input for command
+    // Publish output
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
-    else {
-        vehicle_command = manual_input;
-    }
+    p_vehicle_command_->publish(ros2_bridge::UpdateVehicleCommand(vehicle_command));
+    p_driving_way_->publish(ros2_bridge::UpdatePolyfitLane(driving_way));
+    p_poly_lanes_->publish(ros2_bridge::UpdatePolyfitLanes(poly_lanes));
 }
 
 int main(int argc, char **argv) {
