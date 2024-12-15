@@ -33,7 +33,9 @@ Coding Guidelines
 Update
 --------------
 2024-12-06  Updated for coding guideline homework
+
 2024-12-13  Code fix (now working)
+
 2024-12-15  Introduced DBSCAN algorithm and Savitzky-Golay filter within Lane Detection
 
 TO DO
@@ -47,13 +49,6 @@ Trying Moving average filter
 
 Comments
 --------------
-~~I uploaded the autonomous driving code from mid term.~~
-
-~~However, it seems that the formats and variables have changed alot from mid-term.~~
-
-~~The code will not be able to build for now.~~
-
-The vehicle is now drivable.
 
 To use manual input for testing:
 
