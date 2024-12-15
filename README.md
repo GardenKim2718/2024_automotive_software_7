@@ -34,6 +34,7 @@ Update
 --------------
 2024-12-06  Updated for coding guideline homework
 2024-12-13  Code fix (now working)
+2024-12-15  Introduced DBSCAN algorithm and Savitzky-Golay filter within Lane Detection
 
 TO DO
 --------------

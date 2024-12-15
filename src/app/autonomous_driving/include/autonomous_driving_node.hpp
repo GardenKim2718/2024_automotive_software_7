@@ -136,28 +136,42 @@ class AutonomousDriving : public rclcpp::Node {
         double param_m_ROIRight_param = 3.0;
         std::string param_ref_csv_path;
 
-        // Algorhtm variables
-        double speed_error_integral_ = 0.0;
-        double speed_error_prev_     = 0.0;
+        // Custom variables //
+        // Lane detection & fitting
 
-        // Custom variables
+        // DBSCAN algorithm
+        const double eps = 5.0;      // Maximum distance for a point to be considered part of a cluster
+        const double x_weight = 0.1; // Weight for x-dimension
+        const int min_points = 3;    // Minimum number of points to form a cluster
+
+        // Savitzky-Golay filter
+        const int window_size = 7;  // window size: Odd number
+        const int poly_order = 2;   // Cubic smoothing poly order
+
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
-        const double lane_displacement = 1.5;        //
-        const double min_speed       = 3.0;          // minimum speed if steering exceeds steering_threshold
-        const double alpha           = 0.5;
-        const double steering_threshold = 0.18;      // steering threshold for triggering deceleration
-        const double interval        = 0.01;         // time interval in seconds (100Hz=0.01s)
-        const double integral_max    = 4.0;          // for anti-windup
-        const double pursuit_threshold   = 12.0;    // for obstacle scenario
-        const double safe_distance       = 11.0;
-        int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
+        const double lane_width      = 4.0;          // lane_width : the width of lane
+        bool b_is_left_lane_empty = false;
+        bool b_is_right_lane_empty = false;
+
+        // Longitudinal Control
         double target_speed          = 10.0;
         double speed_error           = 0.0;          // PID error
+        double speed_error_integral_ = 0.0;
+        double speed_error_prev_     = 0.0;
+        const double integral_max    = 4.0;          // for anti-windup
+        const double min_speed       = 3.0;          // minimum speed if steering exceeds steering_threshold
+        const double interval        = 0.01;         // time interval in seconds (100Hz=0.01s)
+
+        // Lateral Control
         double param_m_Lookahead_distance = 0.8;     // look-ahead dist for pure pursuit
         double lateral_error             = 0.0;
         double last_lateral_error        = 0.0;
         const double max_steering_angle  = 0.35;
-        
+        const double alpha           = 0.5;
+        const double steering_threshold = 0.18;      // steering threshold for triggering deceleration
+        const double pursuit_threshold   = 12.0;    // for obstacle scenario
+        const double safe_distance       = 11.0;
+        int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1        
 };
 
 #endif // __AUTONOMOUS_DRIVING_HPP__
