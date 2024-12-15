@@ -40,12 +40,11 @@ Update
 
 TO DO
 --------------
+Update the code to match Software Architecture Design
 
 Branch Description(Describe what this branch is made for)
 --------------
-Testing enhanced lane detection & fitting
 
-Trying Moving average filter
 
 Comments
 --------------
