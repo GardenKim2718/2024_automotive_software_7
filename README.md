@@ -37,6 +37,9 @@ Update
 
 TO DO
 --------------
+
+Branch Description(Describe what this branch is made for)
+--------------
 This branch is based on our mid-term project.
 
 We intend to preserve the our old work for recovery & comparison.
