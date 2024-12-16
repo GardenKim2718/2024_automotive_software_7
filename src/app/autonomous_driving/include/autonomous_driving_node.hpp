@@ -145,13 +145,13 @@ class AutonomousDriving : public rclcpp::Node {
         // Custom variables //
         // Lane detection & fitting //
         // DBSCAN algorithm
-        const double eps = 5.0;      // Maximum distance for a point to be considered part of a cluster
-        const double x_weight = 0.05; // Weight for x-dimension
-        const int min_points = 3;    // Minimum number of points to form a cluster
+        double eps = 5.0;      // Maximum distance for a point to be considered part of a cluster
+        double x_weight = 0.05; // Weight for x-dimension
+        int min_points = 3;    // Minimum number of points to form a cluster
 
         // Savitzky-Golay filter
-        const int window_size = 7;  // window size: Odd number
-        const int poly_order = 2;   // Cubic smoothing poly order
+        int window_size = 7;  // window size: Odd number
+        int poly_order = 2;   // Cubic smoothing poly order
 
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
         const double lane_width      = 4.0;          // lane_width : the width of lane

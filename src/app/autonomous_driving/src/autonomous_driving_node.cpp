@@ -37,19 +37,49 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
     this->declare_parameter("autonomous_driving/use_manual_inputs", false);
        
-    ////////////////////// TODO //////////////////////
-    // TODO: Add more parameters
+    // Custom Parameters
+    this->declare_parameter<double>("param_pp_kd", 1.0);
+    this->declare_parameter<double>("param_pp_kv", 0.05);
+    this->declare_parameter<double>("param_pp_kc", 0.5);
+    this->declare_parameter<double>("param_pid_kp", 5.0);
+    this->declare_parameter<double>("param_pid_ki", 0.002);
+    this->declare_parameter<double>("param_pid_kd", 0.01);
+    this->declare_parameter<int>("window_size", 7);
+    this->declare_parameter<int>("poly_order", 2);
+    this->declare_parameter<double>("eps", 5.0);
+    this->declare_parameter<double>("x_weight", 0.05);
+    this->declare_parameter<int>("min_points", 3);
+
+    this->get_parameter("param_pp_kd", param_pp_kd_);
+    this->get_parameter("param_pp_kv", param_pp_kv_);
+    this->get_parameter("param_pp_kc", param_pp_kc_);
+    this->get_parameter("param_pid_kp", param_pid_kp_);
+    this->get_parameter("param_pid_ki", param_pid_ki_);
+    this->get_parameter("param_pid_kd", param_pid_kd_);
+    this->get_parameter("window_size", window_size);
+    this->get_parameter("poly_order", poly_order);
+    this->get_parameter("eps", eps);
+    this->get_parameter("x_weight", x_weight);
+    this->get_parameter("min_points", min_points);
 
     //////////////////////////////////////////////////
     ProcessParams();
 
+    // Print the parameters
     RCLCPP_INFO(this->get_logger(), "vehicle_namespace: %s", cfg_.vehicle_namespace.c_str());
     RCLCPP_INFO(this->get_logger(), "loop_rate_hz: %f", cfg_.loop_rate_hz);
     RCLCPP_INFO(this->get_logger(), "use_manual_inputs: %d", cfg_.use_manual_inputs);
-    ////////////////////// TODO //////////////////////
-    // TODO: Add more parameters
-
-    //////////////////////////////////////////////////
+    RCLCPP_INFO(this->get_logger(), "eps: %f", eps);
+    RCLCPP_INFO(this->get_logger(), "x_weight: %f", x_weight);
+    RCLCPP_INFO(this->get_logger(), "min_points: %d", min_points);
+    RCLCPP_INFO(this->get_logger(), "param_pp_kd: %f", param_pp_kd_);
+    RCLCPP_INFO(this->get_logger(), "param_pp_kv: %f", param_pp_kv_);
+    RCLCPP_INFO(this->get_logger(), "param_pp_kc: %f", param_pp_kc_);
+    RCLCPP_INFO(this->get_logger(), "param_pid_kp: %f", param_pid_kp_);
+    RCLCPP_INFO(this->get_logger(), "param_pid_ki: %f", param_pid_ki_);
+    RCLCPP_INFO(this->get_logger(), "param_pid_kd: %f", param_pid_kd_);
+    RCLCPP_INFO(this->get_logger(), "window_size: %d", window_size);
+    RCLCPP_INFO(this->get_logger(), "poly_order: %d", poly_order);
 
     // Subscriber init
     s_manual_input_ = this->create_subscription<ad_msgs::msg::VehicleCommand>(

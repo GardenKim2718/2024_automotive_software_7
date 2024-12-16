@@ -8,5 +8,16 @@
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
         <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
         <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
+        <param name="param_pp_kd" value="1.0" type="double"/>
+        <param name="param_pp_kv" value="0.05" type="double"/>
+        <param name="param_pp_kc" value="0.5" type="double"/>
+        <param name="param_pid_kp" value="5.0" type="double"/>
+        <param name="param_pid_ki" value="0.002" type="double"/>
+        <param name="param_pid_kd" value="0.01" type="double"/>
+        <param name="eps" value="5.0" type="double"/>
+        <param name="x_weight" value="0.05" type="double"/>
+        <param name="min_points" value="3" type="integer"/>
+        <param name="window_size" value="7" type="integer"/>
+        <param name="poly_order" value="2" type="integer"/>
     </node>
 </launch>
