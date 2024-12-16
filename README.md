@@ -38,9 +38,13 @@ Update
 
 2024-12-15  Introduced DBSCAN algorithm and Savitzky-Golay filter within Lane Detection
 
+2024-12-16  Updated Obstacle Detection & Classification
+
 TO DO
 --------------
 Update the code to match Software Architecture Design
+
+Implement path planning for merge
 
 Branch Description(Describe what this branch is made for)
 --------------
