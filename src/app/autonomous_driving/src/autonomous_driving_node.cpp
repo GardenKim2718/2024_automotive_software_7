@@ -589,10 +589,12 @@ void AutonomousDriving::Run() {
 
     if (b_is_icy_road) { // If the road is icy, reduce the target speed
         target_speed = std::min(target_speed, icy_speed);
+        RCLCPP_INFO(this->get_logger(), "Icy Road Detected!!!");
     }
 
     if (steering > steering_threshold || steering < -steering_threshold) {
         target_speed = min_speed;
+        RCLCPP_INFO(this->get_logger(), "Steering Angle Exceeds Threshold");
     }
 
     RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
