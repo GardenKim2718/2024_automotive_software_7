@@ -169,7 +169,10 @@ class AutonomousDriving : public rclcpp::Node {
         int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
 
         // Path Planning
-        const double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
+        double prev_lane_center = 0.0;             // prev_lane_center : previous lane center
+        double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
+        double flank_dist_x = 2.0;            // flank_dist : x-distance from the vehicle to consider within merge
+        double flank_dist_y = 2.0;            // flank_dist : y-distance from the vehicle to consider within merge
 
         // Longitudinal Control
         double target_speed          = 10.0;

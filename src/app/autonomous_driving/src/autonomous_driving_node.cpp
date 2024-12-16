@@ -38,29 +38,29 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter("autonomous_driving/use_manual_inputs", false);
        
     // Custom Parameters
-    this->declare_parameter<double>("param_pp_kd", 1.0);
-    this->declare_parameter<double>("param_pp_kv", 0.05);
-    this->declare_parameter<double>("param_pp_kc", 0.5);
-    this->declare_parameter<double>("param_pid_kp", 5.0);
-    this->declare_parameter<double>("param_pid_ki", 0.002);
-    this->declare_parameter<double>("param_pid_kd", 0.01);
-    this->declare_parameter<int>("window_size", 7);
-    this->declare_parameter<int>("poly_order", 2);
-    this->declare_parameter<double>("eps", 5.0);
-    this->declare_parameter<double>("x_weight", 0.05);
-    this->declare_parameter<int>("min_points", 3);
+    this->declare_parameter<double>("autonomous_driving/param_pp_kd", 1.0);
+    this->declare_parameter<double>("autonomous_driving/param_pp_kv", 0.05);
+    this->declare_parameter<double>("autonomous_driving/param_pp_kc", 0.5);
+    this->declare_parameter<double>("autonomous_driving/param_pid_kp", 5.0);
+    this->declare_parameter<double>("autonomous_driving/param_pid_ki", 0.002);
+    this->declare_parameter<double>("autonomous_driving/param_pid_kd", 0.01);
+    this->declare_parameter<double>("autonomous_driving/eps", 5.0);
+    this->declare_parameter<double>("autonomous_driving/x_weight", 0.05);
+    this->declare_parameter<int>("autonomous_driving/min_points", 3);
+    this->declare_parameter<int>("autonomous_driving/window_size", 7);
+    this->declare_parameter<int>("autonomous_driving/poly_order", 2);
 
-    this->get_parameter("param_pp_kd", param_pp_kd_);
-    this->get_parameter("param_pp_kv", param_pp_kv_);
-    this->get_parameter("param_pp_kc", param_pp_kc_);
-    this->get_parameter("param_pid_kp", param_pid_kp_);
-    this->get_parameter("param_pid_ki", param_pid_ki_);
-    this->get_parameter("param_pid_kd", param_pid_kd_);
-    this->get_parameter("window_size", window_size);
-    this->get_parameter("poly_order", poly_order);
-    this->get_parameter("eps", eps);
-    this->get_parameter("x_weight", x_weight);
-    this->get_parameter("min_points", min_points);
+    this->get_parameter("autonomous_driving/param_pp_kd", param_pp_kd_);
+    this->get_parameter("autonomous_driving/param_pp_kv", param_pp_kv_);
+    this->get_parameter("autonomous_driving/param_pp_kc", param_pp_kc_);
+    this->get_parameter("autonomous_driving/param_pid_kp", param_pid_kp_);
+    this->get_parameter("autonomous_driving/param_pid_ki", param_pid_ki_);
+    this->get_parameter("autonomous_driving/param_pid_kd", param_pid_kd_);
+    this->get_parameter("autonomous_driving/window_size", window_size);
+    this->get_parameter("autonomous_driving/poly_order", poly_order);
+    this->get_parameter("autonomous_driving/eps", eps);
+    this->get_parameter("autonomous_driving/x_weight", x_weight);
+    this->get_parameter("autonomous_driving/min_points", min_points);
 
     //////////////////////////////////////////////////
     ProcessParams();
@@ -490,6 +490,7 @@ void AutonomousDriving::Run() {
     driving_way.a1 = (left_polyline.a1 + right_polyline.a1) / 2.0;
     driving_way.a0 = (left_polyline.a0 + right_polyline.a0) / 2.0;
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
+    RCLCPP_INFO(this->get_logger(), "Driving_way - a0: %f", driving_way.a0);
 
     ////////////// Path Planning //////////////////
 
@@ -500,8 +501,8 @@ void AutonomousDriving::Run() {
     b_is_icy_road = false;
     b_is_up_slope = false;
     b_is_down_slope = false;
-    b_left_merge = true;
-    b_right_merge = true;
+    b_left_merge = false;
+    b_right_merge = false;
     b_is_merge_safe = true;
 
     // Extract ego vehicle's position
@@ -550,6 +551,8 @@ void AutonomousDriving::Run() {
         double obs_distance = std::sqrt(std::pow(obstacle.x_ego, 2) + std::pow(obstacle.y_ego, 2));
         if (obstacle.x_ego > 0 && std::abs(obstacle.y_ego) < lane_width_threshold) {  // Check if the obstacle is ahead and within the lane width
             b_trigger_merge = true; // Trigger merge if there is a static obstacle ahead
+            b_left_merge = true;
+            b_right_merge = true;
             if (obs_distance < min_static_distance) {
                 min_static_distance = obs_distance;
             }
@@ -580,6 +583,13 @@ void AutonomousDriving::Run() {
                 obs_velocity = obstacle.velocity;
             }
         }
+        // check if the merge is safe
+        if (b_left_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > lane_width_threshold && obstacle.y_ego < 3 * lane_width_threshold) {
+            b_is_merge_safe = false;
+        }
+        else if (b_right_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego < -lane_width_threshold && obstacle.y_ego > -3 * lane_width_threshold) {
+            b_is_merge_safe = false;
+        }
     }
 
     ////////////// Vehicle Control //////////////////
@@ -602,11 +612,9 @@ void AutonomousDriving::Run() {
     vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);
 
     // Longitudinal control: Calculate acceleration/brake based on PID
-    double min_distance = 100.0;
-
-    if (min_distance < 20.0) {  // Collision avoidance scenario
+    if (min_dynamic_distance < 20.0) {  // Collision avoidance scenario
         // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
-        if (min_distance < safe_distance){
+        if (min_dynamic_distance < safe_distance){
             target_speed = std::clamp( obs_velocity - 3.5, min_speed, limit_speed - 0.05);
         }
         else{

@@ -54,6 +54,6 @@ Comments
 
 To use manual input for testing:
 
--> install/autonomous_driving/share/autonomous_driving/launch/autonomous_driving.launch.xml
+-> src/app/autonomous_driving/launch/autonomous_driving.launch.xml
 
 \<set: arg name="use_manual_inputs" default="true" \/\>

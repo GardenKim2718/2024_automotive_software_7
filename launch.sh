@@ -5,4 +5,4 @@ terminator -e  " source ~/.bashrc && source install/setup.bash && ros2 launch mi
 sleep 3
 terminator -e  " source ~/.bashrc && source install/setup.bash && ros2 launch evaluation evaluation.launch.xml " &
 sleep 3
-terminator -e  " source ~/.bashrc && source install/setup.bash && ros2 launch autonomous_driving autonomous_driving.launch.xml "
+terminator -e  " bash -c 'source ~/.bashrc && source install/setup.bash && ros2 launch autonomous_driving autonomous_driving.launch.xml; if [ \$? -ne 0 ]; then echo \"Press Enter to close...\"; read; fi' "
