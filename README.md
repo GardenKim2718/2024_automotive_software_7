@@ -55,6 +55,10 @@ May be buggy, still in test
 Comments
 --------------
 
+I now updated the /home/chungwon/automotive_software_final/src/app/autonomous_driving/launch/autonomous_driving.launch.xml
+
+to get custom parameters without having to build the entire folder again.
+
 To use manual input for testing:
 
 -> src/app/autonomous_driving/launch/autonomous_driving.launch.xml

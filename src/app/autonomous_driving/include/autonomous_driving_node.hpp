@@ -157,11 +157,11 @@ class AutonomousDriving : public rclcpp::Node {
         const double lane_width      = 4.0;          // lane_width : the width of lane
         const double lane_shift_threshold = lane_width / 2.0; // lane_shift_threshold : Threshold for lane shift
         const double stability_factor = 0.8;        // Smoothing factor for detecting shifts
-        bool b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
         bool b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
         bool b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
 
         // Control Trigger
+        bool b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
         bool b_is_icy_road = false;
         bool b_is_up_slope = false;
         bool b_is_down_slope = false;
@@ -180,8 +180,8 @@ class AutonomousDriving : public rclcpp::Node {
         double flank_dist_y = 2.0;            // flank_dist : y-distance from the vehicle to consider within merge
 
         // Longitudinal Control
-        double target_speed          = 10.0;
         const double icy_speed       = 12.0;         // speed on icy road
+        double merge_speed = 5.0;                   // speed for merging
         double speed_error           = 0.0;          // PID error
         double speed_error_integral_ = 0.0;
         double speed_error_prev_     = 0.0;
