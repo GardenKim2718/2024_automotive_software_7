@@ -2,7 +2,7 @@
 <launch>
     <arg name="ns1" default="ego"/>
     <arg name="loop_rate_hz" default="100.0"/>
-    <arg name="use_manual_inputs" default="false"/>
+    <arg name="use_manual_inputs" default="true"/>
 
     <arg name="param_pp_kd" default="1.0"/>
     <arg name="param_pp_kv" default="0.05"/>
@@ -16,15 +16,10 @@
     <arg name="window_size" default="7"/>
     <arg name="poly_order" default="2"/>
 
-    <node
-        pkg="autonomous_driving"
-        exec="autonomous_driving"
-        name="autonomous_driving"
-        namespace="$(var ns1)"
-        output="screen">
-        <param name="ns" value="$(var ns1)"/>
-        <param name="loop_rate_hz" value="$(var loop_rate_hz)"/>
-        <param name="use_manual_inputs" value="$(var use_manual_inputs)"/>
+    <node pkg="autonomous_driving" exec="autonomous_driving" name="autonomous_driving" namespace="$(var ns1)" output="screen">
+        <param name="autonomous_driving/ns" value="$(var ns1)"/>
+        <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
+        <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
         <param name="param_pp_kd" value="$(var param_pp_kd)"/>
         <param name="param_pp_kv" value="$(var param_pp_kv)"/>
         <param name="param_pp_kc" value="$(var param_pp_kc)"/>
