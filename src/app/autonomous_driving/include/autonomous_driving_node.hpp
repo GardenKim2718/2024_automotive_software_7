@@ -158,12 +158,14 @@ class AutonomousDriving : public rclcpp::Node {
         bool b_is_left_lane_empty = false;
         bool b_is_right_lane_empty = false;
 
-        // Vectors to store static and dynamic obstacles
-        std::vector<ObstacleInfo> static_obstacles;
-        std::vector<ObstacleInfo> dynamic_obstacles;
+        // Control Trigger
+        bool b_is_icy_road = false;
+        bool b_is_up_slope = false;
+        bool b_is_down_slope = false;
 
         // Longitudinal Control
         double target_speed          = 10.0;
+        const double icy_speed       = 12.0;         // speed on icy road
         double speed_error           = 0.0;          // PID error
         double speed_error_integral_ = 0.0;
         double speed_error_prev_     = 0.0;
@@ -177,7 +179,7 @@ class AutonomousDriving : public rclcpp::Node {
         double last_lateral_error        = 0.0;
         const double max_steering_angle  = 0.35;
         const double alpha           = 0.5;
-        const double steering_threshold = 0.18;      // steering threshold for triggering deceleration
+        const double steering_threshold = 0.14;      // steering threshold for triggering deceleration
         const double pursuit_threshold   = 12.0;    // for obstacle scenario
         const double safe_distance       = 11.0;
         int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1        
