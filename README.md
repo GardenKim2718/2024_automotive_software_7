@@ -44,7 +44,8 @@ Update the code to match Software Architecture Design
 
 Branch Description(Describe what this branch is made for)
 --------------
-
+Testing Obstacle Classification & Spatial Cognition
+Temporarily disables avoidance for now
 
 Comments
 --------------

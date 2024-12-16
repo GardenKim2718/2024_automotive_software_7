@@ -38,6 +38,12 @@
 // Parameter Header
 #include "autonomous_driving_config.hpp"
 
+struct ObstacleInfo {
+    double x_ego;
+    double y_ego;
+    double velocity;
+};
+
 class AutonomousDriving : public rclcpp::Node {
     public:
         explicit AutonomousDriving(const std::string& node_name, const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
@@ -137,8 +143,7 @@ class AutonomousDriving : public rclcpp::Node {
         std::string param_ref_csv_path;
 
         // Custom variables //
-        // Lane detection & fitting
-
+        // Lane detection & fitting //
         // DBSCAN algorithm
         const double eps = 5.0;      // Maximum distance for a point to be considered part of a cluster
         const double x_weight = 0.1; // Weight for x-dimension
@@ -152,6 +157,10 @@ class AutonomousDriving : public rclcpp::Node {
         const double lane_width      = 4.0;          // lane_width : the width of lane
         bool b_is_left_lane_empty = false;
         bool b_is_right_lane_empty = false;
+
+        // Vectors to store static and dynamic obstacles
+        std::vector<ObstacleInfo> static_obstacles;
+        std::vector<ObstacleInfo> dynamic_obstacles;
 
         // Longitudinal Control
         double target_speed          = 10.0;
