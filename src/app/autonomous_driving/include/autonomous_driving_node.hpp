@@ -146,7 +146,7 @@ class AutonomousDriving : public rclcpp::Node {
         // Lane detection & fitting //
         // DBSCAN algorithm
         const double eps = 5.0;      // Maximum distance for a point to be considered part of a cluster
-        const double x_weight = 0.1; // Weight for x-dimension
+        const double x_weight = 0.05; // Weight for x-dimension
         const int min_points = 3;    // Minimum number of points to form a cluster
 
         // Savitzky-Golay filter
@@ -155,13 +155,21 @@ class AutonomousDriving : public rclcpp::Node {
 
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
         const double lane_width      = 4.0;          // lane_width : the width of lane
-        bool b_is_left_lane_empty = false;
-        bool b_is_right_lane_empty = false;
+        bool b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
+        bool b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
+        bool b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
 
         // Control Trigger
         bool b_is_icy_road = false;
         bool b_is_up_slope = false;
         bool b_is_down_slope = false;
+        bool b_left_merge = false;
+        bool b_right_merge = false;
+        bool b_is_merge_safe = true;
+        int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
+
+        // Path Planning
+        const double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
 
         // Longitudinal Control
         double target_speed          = 10.0;
@@ -181,8 +189,7 @@ class AutonomousDriving : public rclcpp::Node {
         const double alpha           = 0.5;
         const double steering_threshold = 0.14;      // steering threshold for triggering deceleration
         const double pursuit_threshold   = 12.0;    // for obstacle scenario
-        const double safe_distance       = 11.0;
-        int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1        
+        const double safe_distance       = 11.0;        
 };
 
 #endif // __AUTONOMOUS_DRIVING_HPP__

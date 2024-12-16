@@ -254,12 +254,8 @@ void AutonomousDriving::Run() {
     // TODO: Add lateral and longitudinal control algorithm
     interface::VehicleCommand vehicle_command;
 
-    /* >>>>>>> Lane Detection <<<<<<<*/
+    ////////////// Lane Detection //////////////////
     std::vector<geometry_msgs::msg::Point> filtered_lane_points; // filtered_lane_points : List of lane points after filtering
-
-    // Clear previous obstacle data
-    static_obstacles.clear();
-    dynamic_obstacles.clear();
 
     // Filter and store all lane points
     for (const auto& point : current_lane_points.point) {
@@ -279,7 +275,7 @@ void AutonomousDriving::Run() {
     std::vector<geometry_msgs::msg::Point> potential_left, potential_right;
 
     for (const auto& point : filtered_lane_points) {
-        if (point.x > -5.0 && point.x < 5.0) { // Valid x range
+        if (point.x > -8.0 && point.x < 8.0) { // Valid x range
             if (point.y < 0) {
                 potential_right.push_back(point); // Points likely on the right lane
             } else if (point.y > 0) {
@@ -356,7 +352,7 @@ void AutonomousDriving::Run() {
     RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
     RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
 
-    /* >>>>>>> Lane Fitting <<<<<<<*/
+    ////////////// Lane Fitting //////////////////
     //    With classified points, you can curve fit the lane and find the left, right lane.
     //    The generated left and right lane should be stored in the "poly_lanes".
     //    If you do so, the Display node will visualize the lanes.
@@ -465,6 +461,99 @@ void AutonomousDriving::Run() {
     driving_way.a0 = (left_polyline.a0 + right_polyline.a0) / 2.0;
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
+    ////////////// Path Planning //////////////////
+
+    // Initialize boolean flags
+    b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
+    b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
+    b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
+    b_is_icy_road = false;
+    b_is_up_slope = false;
+    b_is_down_slope = false;
+    b_left_merge = true;
+    b_right_merge = true;
+    b_is_merge_safe = true;
+
+    // Extract ego vehicle's position
+    double ego_x = current_vehicle_state.x;
+    double ego_y = current_vehicle_state.y;
+    double ego_yaw = current_vehicle_state.yaw;
+
+    // Vectors to store static and dynamic obstacles
+    std::vector<ObstacleInfo> static_obstacles;
+    std::vector<ObstacleInfo> dynamic_obstacles;
+
+    for (const auto& obstacle : current_mission.objects) {
+        // Calculate the distance to the obstacle
+        double delta_x = obstacle.x - ego_x;
+        double delta_y = obstacle.y - ego_y;
+
+        // Convert obstacle coordinates to ego coordinates
+        double cos_yaw = std::cos(ego_yaw);
+        double sin_yaw = std::sin(ego_yaw);
+        double obs_x_ego = cos_yaw * delta_x + sin_yaw * delta_y;
+        double obs_y_ego = -sin_yaw * delta_x + cos_yaw * delta_y;
+
+        // Create an ObstacleInfo object
+        ObstacleInfo obs_info = {obs_x_ego, obs_y_ego, obstacle.velocity};
+        
+        // Classify the obstacle and update minimum distances
+        if (obstacle.object_type == "Static") {
+            static_obstacles.push_back(obs_info);
+        } else if (obstacle.object_type == "Dynamic") {
+            dynamic_obstacles.push_back(obs_info);
+        }
+    }
+
+    // Set road condition and slope flags
+    b_is_icy_road = (current_mission.road_condition == "Ice");
+    b_is_up_slope = (current_mission.road_slope == "Up");
+    b_is_down_slope = (current_mission.road_slope == "Down");
+
+    double min_dynamic_distance = 100.0;
+    double min_static_distance = 100.0;
+    double obs_velocity = 35.0;
+    const double lane_width_threshold = (lane_width / 2.0) + 1.0; // Define a threshold for same lane detection
+
+    // Detect obstacles in the same lane
+    for (const auto& obstacle : static_obstacles) {
+        double obs_distance = std::sqrt(std::pow(obstacle.x_ego, 2) + std::pow(obstacle.y_ego, 2));
+        if (obstacle.x_ego > 0 && std::abs(obstacle.y_ego) < lane_width_threshold) {  // Check if the obstacle is ahead and within the lane width
+            b_trigger_merge = true; // Trigger merge if there is a static obstacle ahead
+            if (obs_distance < min_static_distance) {
+                min_static_distance = obs_distance;
+            }
+        }
+    }
+
+    // Check which lane is safe to merge
+    if (b_trigger_merge) {
+        RCLCPP_INFO(this->get_logger(), "Merge Triggered!!!");
+
+        for (const auto& obstacle : static_obstacles) {
+            if (obstacle.x_ego > 0) {  // Check if the obstacle is ahead
+                if (obstacle.y_ego > lane_width_threshold && obstacle.y_ego < 3 * lane_width_threshold) {  // Check if the obstacle is in the left lane
+                    b_left_merge = false;
+                } else if (obstacle.y_ego < -lane_width_threshold && obstacle.y_ego > -3 * lane_width_threshold) {  // Check if the obstacle is in the right lane
+                    b_right_merge = false;
+                }
+            }
+        }
+    }
+
+    // Classify forward dynamic obstacles
+    for (const auto& obstacle : dynamic_obstacles) {
+        double obs_distance = std::sqrt(std::pow(obstacle.x_ego, 2) + std::pow(obstacle.y_ego, 2));
+        if (obstacle.x_ego > 0 && std::abs(obstacle.y_ego) < lane_width_threshold) {  // Check if the obstacle is ahead and within the lane width
+            if (obs_distance < min_dynamic_distance) {
+                min_dynamic_distance = obs_distance;
+                obs_velocity = obstacle.velocity;
+            }
+        }
+    }
+
+    ////////////// Vehicle Control //////////////////
+
     // Lateral control: Calculate steering angle based on Pure Pursuit //
     double limit_speed = current_mission.speed_limit;
 
@@ -483,62 +572,7 @@ void AutonomousDriving::Run() {
     vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);
 
     // Longitudinal control: Calculate acceleration/brake based on PID
-    // Extract ego vehicle's position
-    double ego_x = current_vehicle_state.x;
-    double ego_y = current_vehicle_state.y;
-    double ego_yaw = current_vehicle_state.yaw;
-
-    // obstacle distance calculation
-    double min_static_distance = 100.0;
-    double min_dynamic_distance = 100.0;
-    double static_obs_velocity = 0.0;
-    double dynamic_obs_velocity = 0.0;
-
-    // Vectors to store static and dynamic obstacles
-    std::vector<ObstacleInfo> static_obstacles;
-    std::vector<ObstacleInfo> dynamic_obstacles;
-
-    for (const auto& obstacle : current_mission.objects) {
-        // Calculate the distance to the obstacle
-        double delta_x = obstacle.x - ego_x;
-        double delta_y = obstacle.y - ego_y;
-        double distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-
-        // Convert obstacle coordinates to ego coordinates
-        double cos_yaw = std::cos(ego_yaw);
-        double sin_yaw = std::sin(ego_yaw);
-        double obs_x_ego = cos_yaw * delta_x + sin_yaw * delta_y;
-        double obs_y_ego = -sin_yaw * delta_x + cos_yaw * delta_y;
-
-        // Create an ObstacleInfo object
-        ObstacleInfo obs_info = {obs_x_ego, obs_y_ego, obstacle.velocity};
-        
-        // Classify the obstacle and update minimum distances
-        if (obstacle.object_type == "Static") {
-            if (distance < min_static_distance) {
-                min_static_distance = distance;
-                static_obs_velocity = obstacle.velocity;
-            }
-            static_obstacles.push_back(obs_info);
-        } else if (obstacle.object_type == "Dynamic") {
-            if (distance < min_dynamic_distance) {
-                min_dynamic_distance = distance;
-                dynamic_obs_velocity = obstacle.velocity;
-            }
-            dynamic_obstacles.push_back(obs_info);
-        }
-    }
-
-    // Set road condition and slope flags
-    b_is_icy_road = (current_mission.road_condition == "Ice");
-    b_is_up_slope = (current_mission.road_slope == "Up");
-    b_is_down_slope = (current_mission.road_slope == "Down");
-
     double min_distance = 100.0;
-    double obs_velocity = 35.0;
-
-    // TODO: calc min_distance and obs_velocity from ahead obstacles
-    //
 
     if (min_distance < 20.0) {  // Collision avoidance scenario
         // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
