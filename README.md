@@ -48,9 +48,6 @@ Implement path planning for merge
 
 Branch Description(Describe what this branch is made for)
 --------------
-Testing Obstacle Classification & Spatial Cognition
-
-Temporarily disabled obstacle avoidance for now
 
 Comments
 --------------
