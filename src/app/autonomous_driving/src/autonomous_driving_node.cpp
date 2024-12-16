@@ -93,6 +93,7 @@ double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geome
     return std::sqrt(dx * dx + dy * dy);
 }
 
+// DBSCAN for lane point classification //
 std::vector<std::vector<geometry_msgs::msg::Point>> AutonomousDriving::dbscanClustering(
     const std::vector<geometry_msgs::msg::Point>& points, double eps, int min_points, double x_weight) {
 
@@ -147,6 +148,7 @@ std::vector<std::vector<geometry_msgs::msg::Point>> AutonomousDriving::dbscanClu
     return clusters;
 }
 
+// SG filter for smoothing lane //
 std::vector<double> AutonomousDriving::generateSavitzkyGolayKernel(int window_size, int poly_order) {
     int half_window = window_size / 2;
     Eigen::MatrixXd A(window_size, poly_order + 1);
@@ -255,6 +257,10 @@ void AutonomousDriving::Run() {
     /* >>>>>>> Lane Detection <<<<<<<*/
     std::vector<geometry_msgs::msg::Point> filtered_lane_points; // filtered_lane_points : List of lane points after filtering
 
+    // Clear previous obstacle data
+    static_obstacles.clear();
+    dynamic_obstacles.clear();
+
     // Filter and store all lane points
     for (const auto& point : current_lane_points.point) {
         geometry_msgs::msg::Point converted_point;
@@ -320,8 +326,6 @@ void AutonomousDriving::Run() {
     }
 
     // Generate Savitzky-Golay kernel
-    int window_size = 7;  // Odd number
-    int poly_order = 2;   // Cubic smoothing
     auto kernel = generateSavitzkyGolayKernel(window_size, poly_order);
 
     // Smooth lane points
@@ -329,6 +333,7 @@ void AutonomousDriving::Run() {
     std::vector<double> smoothed_left_y = applySavitzkyGolayFilter(left_y, kernel);
     std::vector<double> smoothed_right_x = applySavitzkyGolayFilter(right_x, kernel);
     std::vector<double> smoothed_right_y = applySavitzkyGolayFilter(right_y, kernel);
+    
     // Replace original points with smoothed points
     left_lane_points.clear();
     right_lane_points.clear();
@@ -460,95 +465,120 @@ void AutonomousDriving::Run() {
     driving_way.a0 = (left_polyline.a0 + right_polyline.a0) / 2.0;
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
 
+    // Lateral control: Calculate steering angle based on Pure Pursuit //
+    double limit_speed = current_mission.speed_limit;
+
+    // Compute the original lateral_error
+    lateral_error = driving_way.a3 * std::pow(param_m_Lookahead_distance, 3)
+            + driving_way.a2 * std::pow(param_m_Lookahead_distance, 2)
+            + driving_way.a1 * param_m_Lookahead_distance
+            + driving_way.a0;
+
+    // Apply the low-pass filter
+    lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;
+    last_lateral_error = lateral_error;
+
+    // Use filtered_e_ for steering calculation
+    double steering = atan((2 * param_pp_kd_ * lateral_error) / (param_pp_kv_ * current_vehicle_state.velocity + param_pp_kc_));
+    vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);
+
+    // Longitudinal control: Calculate acceleration/brake based on PID
+    // Extract ego vehicle's position
+    double ego_x = current_vehicle_state.x;
+    double ego_y = current_vehicle_state.y;
+    double ego_yaw = current_vehicle_state.yaw;
+
+    // obstacle distance calculation
+    double min_static_distance = 100.0;
+    double min_dynamic_distance = 100.0;
+    double static_obs_velocity = 0.0;
+    double dynamic_obs_velocity = 0.0;
+
+    // Vectors to store static and dynamic obstacles
+    std::vector<ObstacleInfo> static_obstacles;
+    std::vector<ObstacleInfo> dynamic_obstacles;
+
+    for (const auto& obstacle : current_mission.objects) {
+        // Calculate the distance to the obstacle
+        double delta_x = obstacle.x - ego_x;
+        double delta_y = obstacle.y - ego_y;
+        double distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+
+        // Convert obstacle coordinates to ego coordinates
+        double cos_yaw = std::cos(ego_yaw);
+        double sin_yaw = std::sin(ego_yaw);
+        double obs_x_ego = cos_yaw * delta_x + sin_yaw * delta_y;
+        double obs_y_ego = -sin_yaw * delta_x + cos_yaw * delta_y;
+
+        // Create an ObstacleInfo object
+        ObstacleInfo obs_info = {obs_x_ego, obs_y_ego, obstacle.velocity};
+        
+        // Classify the obstacle and update minimum distances
+        if (obstacle.object_type == "Static") {
+            if (distance < min_static_distance) {
+                min_static_distance = distance;
+                static_obs_velocity = obstacle.velocity;
+            }
+            static_obstacles.push_back(obs_info);
+        } else if (obstacle.object_type == "Dynamic") {
+            if (distance < min_dynamic_distance) {
+                min_dynamic_distance = distance;
+                dynamic_obs_velocity = obstacle.velocity;
+            }
+            dynamic_obstacles.push_back(obs_info);
+        }
+    }
+
+    double min_distance = 0.0;
+    double obs_velocity = 0.0;
+    double target_speed = 0;
+
+    if (min_distance < 20.0) {  // Collision avoidance scenario
+        // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
+        if (min_distance < safe_distance){
+            target_speed = std::clamp( obs_velocity - 3.5, min_speed, limit_speed - 0.05);
+        }
+        else{
+            target_speed = std::clamp( obs_velocity + 2.0 , min_speed ,limit_speed - 0.05);
+        }
+    }
+    else{  // regular longitudinal control(PID + anti-windup)
+        target_speed = limit_speed - current_vehicle_state.velocity - 0.05 ;
+    }
+
+    if (steering > steering_threshold || steering < -steering_threshold) {
+        target_speed = min_speed;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
+
+    // Longitudinal Control
+    speed_error = target_speed - current_vehicle_state.velocity;
+    speed_error_integral_ = std::clamp(speed_error_integral_ + speed_error * interval, -integral_max, integral_max);
+
+    double diff = (speed_error - speed_error_prev_) / interval;
+
+    double pidvalue_ = param_pid_kp_ * speed_error + param_pid_kd_ * diff + param_pid_ki_ * speed_error_integral_;   // PID control
+    pidvalue_ = std::clamp(pidvalue_, -1.0, 1.0);
+
+    vehicle_command.accel = 0.0;
+    vehicle_command.brake = 0.0;
+
+    if (pidvalue_ > 0) {
+        vehicle_command.accel = pidvalue_;
+        vehicle_command.brake = 0.0;
+    }
+    else{
+        vehicle_command.accel = 0.0;
+        vehicle_command.brake = -pidvalue_;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
+            vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
+
     // If using manual input
     if (cfg_.use_manual_inputs == true) {
         vehicle_command = manual_input;
-    }
-    else { // Autonomous driving //
-
-        // Lateral control: Calculate steering angle based on Pure Pursuit
-        //    You can tune your controller using the ros parameter.
-        //    We provide the example of 'Pure Pursuit' parameters, so you can edit and use them.
-        double limit_speed = current_mission.speed_limit;
-
-        // Compute the original lateral_error
-        lateral_error = driving_way.a3 * std::pow(param_m_Lookahead_distance, 3)
-                + driving_way.a2 * std::pow(param_m_Lookahead_distance, 2)
-                + driving_way.a1 * param_m_Lookahead_distance
-                + driving_way.a0;
-
-        // Apply the low-pass filter
-        lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;
-        last_lateral_error = lateral_error;
-
-        // Use filtered_e_ for steering calculation
-        double steering = atan((2 * param_pp_kd_ * lateral_error) / (param_pp_kv_ * current_vehicle_state.velocity + param_pp_kc_));
-        vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);
-
-        // Longitudinal control: Calculate acceleration/brake based on PID
-        // Extract ego vehicle's position
-        double ego_x = current_vehicle_state.x;
-        double ego_y = current_vehicle_state.y;
-
-        // obstacle distance calculation
-        double min_distance = 100.0;
-        double obs_velocity = 20.0;
-
-        if (current_mission.objects.size() > 1) {
-            const auto& obstacle = current_mission.objects[1];
-            // Calculate the distance to the obstacle
-            double delta_x = ego_x - obstacle.x;
-            double delta_y = ego_y - obstacle.y;
-            min_distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-            obs_velocity = obstacle.velocity;
-        }
-
-        // RCLCPP_INFO(this->get_logger(), "Min distance: %.2f", min_distance);
-
-        double target_speed = 0;
-
-        if (min_distance < 20.0) {  // Collision avoidance scenario
-            // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
-            if (min_distance < safe_distance){
-                target_speed = std::clamp( obs_velocity - 3.5, min_speed, limit_speed - 0.05);
-            }
-            else{
-                target_speed = std::clamp( obs_velocity + 2.0 , min_speed ,limit_speed - 0.05);
-            }
-        }
-        else{  // regular longitudinal control(PID + anti-windup)
-            target_speed = limit_speed - current_vehicle_state.velocity - 0.05 ;
-        }
-
-        if (steering > steering_threshold || steering < -steering_threshold) {
-            target_speed = min_speed;
-        }
-
-        RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
-
-        // Longitudinal Control
-        speed_error = target_speed - current_vehicle_state.velocity;
-        speed_error_integral_ = std::clamp(speed_error_integral_ + speed_error * interval, -integral_max, integral_max);
-
-        double diff = (speed_error - speed_error_prev_) / interval;
-
-        double pidvalue_ = param_pid_kp_ * speed_error + param_pid_kd_ * diff + param_pid_ki_ * speed_error_integral_;   // PID control
-        pidvalue_ = std::clamp(pidvalue_, -1.0, 1.0);
-
-        vehicle_command.accel = 0.0;
-        vehicle_command.brake = 0.0;
-
-        if (pidvalue_ > 0) {
-            vehicle_command.accel = pidvalue_;
-            vehicle_command.brake = 0.0;
-        }
-        else{
-            vehicle_command.accel = 0.0;
-            vehicle_command.brake = -pidvalue_;
-        }
-
-        RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
-             vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
     }
 
     // Publish output
