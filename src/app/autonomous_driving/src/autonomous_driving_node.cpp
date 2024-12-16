@@ -529,9 +529,16 @@ void AutonomousDriving::Run() {
         }
     }
 
-    double min_distance = 0.0;
-    double obs_velocity = 0.0;
-    double target_speed = 0;
+    // Set road condition and slope flags
+    b_is_icy_road = (current_mission.road_condition == "Ice");
+    b_is_up_slope = (current_mission.road_slope == "Up");
+    b_is_down_slope = (current_mission.road_slope == "Down");
+
+    double min_distance = 100.0;
+    double obs_velocity = 35.0;
+
+    // TODO: calc min_distance and obs_velocity from ahead obstacles
+    //
 
     if (min_distance < 20.0) {  // Collision avoidance scenario
         // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
@@ -544,6 +551,10 @@ void AutonomousDriving::Run() {
     }
     else{  // regular longitudinal control(PID + anti-windup)
         target_speed = limit_speed - current_vehicle_state.velocity - 0.05 ;
+    }
+
+    if (b_is_icy_road) { // If the road is icy, reduce the target speed
+        target_speed = std::min(target_speed, icy_speed);
     }
 
     if (steering > steering_threshold || steering < -steering_threshold) {
