@@ -295,7 +295,7 @@ void AutonomousDriving::Run() {
         filtered_lane_points.push_back(converted_point); // Add to filtered_lane_points
     }
 
-    RCLCPP_INFO(this->get_logger(), "Number of filtered points: %zu", filtered_lane_points.size());
+    // RCLCPP_INFO(this->get_logger(), "Number of filtered points: %zu", filtered_lane_points.size());
 
     // Sort points based on x-coordinates
     std::sort(filtered_lane_points.begin(), filtered_lane_points.end(), [](const auto& a, const auto& b) {
@@ -379,8 +379,8 @@ void AutonomousDriving::Run() {
     b_is_left_lane_empty = left_lane_points.empty();
     b_is_right_lane_empty = right_lane_points.empty();
 
-    RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
-    RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
+    // RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
+    // RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
 
     ////////////// Lane Fitting //////////////////
     //    With classified points, you can curve fit the lane and find the left, right lane.
@@ -492,6 +492,25 @@ void AutonomousDriving::Run() {
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
     RCLCPP_INFO(this->get_logger(), "Driving_way - a0: %f", driving_way.a0);
 
+    smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
+    double current_center_offset = driving_way.a0;
+    target_lane_center = driving_way.a0;
+
+    // Smooth the centerline offset using exponential smoothing
+    smoothed_center_offset = stability_factor * prev_lane_center + (1.0 - stability_factor) * current_center_offset;
+    prev_lane_center = smoothed_center_offset;
+
+    // Check if the ego vehicle has shifted lanes
+    if (smoothed_center_offset > (lane_width / 2.0)) {
+        current_lane = current_lane +1;
+        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Right!!!");
+    } else if (smoothed_center_offset < -(lane_width / 2.0)) {
+        current_lane = current_lane -1;
+        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Left!!!");
+    } else {
+        current_lane = current_lane;
+    }
+
     ////////////// Path Planning //////////////////
 
     // Initialize boolean flags
@@ -592,6 +611,25 @@ void AutonomousDriving::Run() {
         }
     }
 
+    // Check if a lane merge is triggered and safe to execute
+    if (b_trigger_merge && b_is_merge_safe) {
+        if (b_left_merge && !b_right_merge) {
+            // Shift to the left lane
+            RCLCPP_INFO(this->get_logger(), "Shifting to the LEFT lane...");
+            target_lane_center = target_lane_center + lane_width;  // Adjust the offset for left lane
+        } else if (b_right_merge && !b_left_merge) {
+            // Shift to the right lane
+            RCLCPP_INFO(this->get_logger(), "Shifting to the RIGHT lane...");
+            target_lane_center = target_lane_center - lane_width;  // Adjust the offset for right lane
+        } else if (b_left_merge && b_right_merge) {
+            // Both directions are available, prioritize the safer or mission-critical side
+            RCLCPP_INFO(this->get_logger(), "Both lanes available for merging, prioritizing LEFT...");
+            target_lane_center = target_lane_center + lane_width;  // Adjust the offset for left lane
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Merge triggered, but no safe lane available!");
+        }
+    }
+
     ////////////// Vehicle Control //////////////////
 
     // Lateral control: Calculate steering angle based on Pure Pursuit //
@@ -635,7 +673,7 @@ void AutonomousDriving::Run() {
         RCLCPP_INFO(this->get_logger(), "Steering Angle Exceeds Threshold");
     }
 
-    RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
+    // RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
 
     // Longitudinal Control
     speed_error = target_speed - current_vehicle_state.velocity;
@@ -658,8 +696,17 @@ void AutonomousDriving::Run() {
         vehicle_command.brake = -pidvalue_;
     }
 
-    RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
-            vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
+    // If merge is necessary but not safe, apply brakes
+    if (b_trigger_merge && !b_is_merge_safe) {
+        vehicle_command.accel = 0.0;
+        vehicle_command.brake = 1.0;
+    } else {
+        vehicle_command.accel = 0.0;
+        vehicle_command.brake = 0.0;
+    }
+
+    // RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
+    //         vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
 
     // If using manual input
     if (cfg_.use_manual_inputs == true) {

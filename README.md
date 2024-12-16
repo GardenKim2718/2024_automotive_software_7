@@ -48,6 +48,9 @@ Implement path planning for merge
 
 Branch Description(Describe what this branch is made for)
 --------------
+Testing merge and obstacle avoidance algorithm
+
+May be buggy, still in test
 
 Comments
 --------------

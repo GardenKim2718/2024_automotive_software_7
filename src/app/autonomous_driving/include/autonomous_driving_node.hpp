@@ -155,6 +155,8 @@ class AutonomousDriving : public rclcpp::Node {
 
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
         const double lane_width      = 4.0;          // lane_width : the width of lane
+        const double lane_shift_threshold = lane_width / 2.0; // lane_shift_threshold : Threshold for lane shift
+        const double stability_factor = 0.8;        // Smoothing factor for detecting shifts
         bool b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
         bool b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
         bool b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
@@ -167,9 +169,12 @@ class AutonomousDriving : public rclcpp::Node {
         bool b_right_merge = false;
         bool b_is_merge_safe = true;
         int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
+        bool b_return_to_center = false;            // trigger for returning to center lane
 
         // Path Planning
+        double smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
         double prev_lane_center = 0.0;             // prev_lane_center : previous lane center
+        double target_lane_center = 0.0;           // target_lane_center : target lane center
         double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
         double flank_dist_x = 2.0;            // flank_dist : x-distance from the vehicle to consider within merge
         double flank_dist_y = 2.0;            // flank_dist : y-distance from the vehicle to consider within merge
