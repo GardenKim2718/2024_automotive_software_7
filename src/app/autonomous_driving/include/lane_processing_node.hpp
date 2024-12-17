@@ -7,6 +7,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include "ad_msgs/msg/lane_point_data.hpp"
 #include "ad_msgs/msg/polyfit_lane_data_array.hpp"
+#include "ad_msgs/msg/polyfit_lane_data.hpp"
 
 class LaneProcessingNode : public rclcpp::Node {
 public:
@@ -25,6 +26,9 @@ private:
     std::vector<double> generateSavitzkyGolayKernel(int window_size, int poly_order);
     std::vector<double> applySavitzkyGolayFilter(const std::vector<double>& data, const std::vector<double>& kernel);
     Eigen::VectorXd fitPolynomial(const std::vector<geometry_msgs::msg::Point>& points, int order);
+
+    // Generate Driving Way
+    Eigen::VectorXd calculateDrivingWay(const Eigen::VectorXd& left_lane, const Eigen::VectorXd& right_lane);
 
     // Subscribers and Publishers
     rclcpp::Subscription<ad_msgs::msg::LanePointData>::SharedPtr s_sensor_data_;
