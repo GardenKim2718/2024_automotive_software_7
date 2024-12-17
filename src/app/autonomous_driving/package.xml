@@ -1,32 +1,17 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>autonomous_driving</name>
-  <version>0.1.0</version>
-  <description>
-    The autonomous_driving package includes LaneProcessing and AutonomousDriving nodes 
-    for vehicle control and lane detection/fitting.
-  </description>
+    <version>0.0.0</version>
+    <description>The autonomous_driving package</description>
 
-  <maintainer email="yuseungna@hanyang.ac.kr">Yuseung Na</maintainer>
-  <maintainer email="seokhui.han@hanyang.ac.kr">Seokhui Han</maintainer>
-  <maintainer email="chungwon.kim@hanyang.ac.kr">Chungwon Kim</maintainer>
+    <maintainer email="yuseungna@hanyang.ac.kr">Yuseung Na</maintainer>
+    <license>TODO</license>
+        
+    <buildtool_depend>ament_cmake</buildtool_depend>
+    <depend>rclcpp</depend>
+    <depend>ad_msgs</depend>
 
-  <license>Apache-2.0</license>
-
-  <!-- Build tools -->
-  <buildtool_depend>ament_cmake</buildtool_depend>
-
-  <!-- Dependencies -->
-  <depend>rclcpp</depend>
-  <depend>geometry_msgs</depend>
-  <depend>std_msgs</depend>
-  <depend>ad_msgs</depend>
-  <depend>tf2</depend>
-  <depend>tf2_ros</depend>
-  <depend>eigen3_cmake_module</depend>
-
-  <!-- Export build type -->
-  <export>
-    <build_type>ament_cmake</build_type>
-  </export>
+    <export>
+      <build_type>ament_cmake</build_type>
+    </export>
 </package>
