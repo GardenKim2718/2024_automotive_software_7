@@ -504,7 +504,7 @@ void AutonomousDriving::Run() {
     driving_way.a1 = (left_polyline.a1 + right_polyline.a1) / 2.0;
     driving_way.a0 = (left_polyline.a0 + right_polyline.a0) / 2.0;
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
-    RCLCPP_INFO(this->get_logger(), "Driving_way: %f", driving_way.a0);
+    RCLCPP_INFO(this->get_logger(), "Driving_way - a0: %f", driving_way.a0);
 
     smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
     double current_center_offset = driving_way.a0;
@@ -594,17 +594,11 @@ void AutonomousDriving::Run() {
     if (b_trigger_merge) {
         RCLCPP_INFO(this->get_logger(), "Merge Triggered!!!");
 
-        if (current_lane == -1) {
-            b_left_merge = false;
-        } else if (current_lane == 1) {
-            b_right_merge = false;
-        }
-
         for (const auto& obstacle : static_obstacles) {
             if (obstacle.x_ego > 0) {  // Check if the obstacle is ahead
-                if (b_left_merge && obstacle.y_ego > lane_width_threshold && obstacle.y_ego < 3 * lane_width_threshold) {  // Check if the obstacle is in the left lane
+                if (obstacle.y_ego > lane_width_threshold && obstacle.y_ego < 3 * lane_width_threshold) {  // Check if the obstacle is in the left lane
                     b_left_merge = false;
-                } else if (b_right_merge && obstacle.y_ego < -lane_width_threshold && obstacle.y_ego > -3 * lane_width_threshold) {  // Check if the obstacle is in the right lane
+                } else if (obstacle.y_ego < -lane_width_threshold && obstacle.y_ego > -3 * lane_width_threshold) {  // Check if the obstacle is in the right lane
                     b_right_merge = false;
                 }
             }
@@ -652,7 +646,6 @@ void AutonomousDriving::Run() {
 
     // Lateral control: Calculate steering angle based on Pure Pursuit //
     double limit_speed = current_mission.speed_limit;
-    double target_speed = limit_speed - 0.05;
 
     // Compute the original lateral_error
     lateral_error = driving_way.a3 * std::pow(param_m_Lookahead_distance, 3)
@@ -672,10 +665,10 @@ void AutonomousDriving::Run() {
     if (min_dynamic_distance < 20.0) {  // Collision avoidance scenario
         // Calculate a safe decel/accel based on how close the vehicle is to the obstacle
         if (min_dynamic_distance < safe_distance){
-            target_speed = std::clamp( obs_velocity - 3.5, 0.0, limit_speed - 0.05);
+            target_speed = std::clamp( obs_velocity - 3.5, min_speed, limit_speed - 0.05);
         }
         else{
-            target_speed = std::clamp( obs_velocity + 2.0 , 0.0, limit_speed - 0.05);
+            target_speed = std::clamp( obs_velocity + 2.0 , min_speed ,limit_speed - 0.05);
         }
     }
     else{  // regular longitudinal control(PID + anti-windup)
@@ -687,16 +680,12 @@ void AutonomousDriving::Run() {
         RCLCPP_INFO(this->get_logger(), "Icy Road Detected!!!");
     }
 
-    if (b_trigger_merge) {
-        target_speed = merge_speed;
-    }
-
     if (steering > steering_threshold || steering < -steering_threshold) {
         target_speed = min_speed;
         RCLCPP_INFO(this->get_logger(), "Steering Angle Exceeds Threshold");
     }
 
-    RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
+    // RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
 
     // Longitudinal Control
     speed_error = target_speed - current_vehicle_state.velocity;
@@ -723,6 +712,9 @@ void AutonomousDriving::Run() {
     if (b_trigger_merge && !b_is_merge_safe) {
         vehicle_command.accel = 0.0;
         vehicle_command.brake = 1.0;
+    } else {
+        vehicle_command.accel = 0.0;
+        vehicle_command.brake = 0.0;
     }
 
     // RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
