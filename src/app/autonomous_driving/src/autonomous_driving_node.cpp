@@ -22,6 +22,7 @@
  * 2024-12-06 Chungwon Kim code fix and lane_fitting update
  * 2024-12-06 Chungwon Kim testing improved lane fitting algorithm
  * 2024-12-15 Chungwon Kim introduced DBSCAN algorithm and Savitzky-Golay filter within Lane Detection
+ * 2024-12-17 Chungwon Kim updated path planning algorithm
  */
 
 #include "autonomous_driving_node.hpp"
@@ -36,7 +37,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
     this->declare_parameter("autonomous_driving/use_manual_inputs", false);
-       
+    
     // Custom Parameters
     this->declare_parameter<double>("autonomous_driving/param_pp_kd", 1.0);
     this->declare_parameter<double>("autonomous_driving/param_pp_kv", 0.05);
@@ -49,6 +50,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter<int>("autonomous_driving/min_points", 3);
     this->declare_parameter<int>("autonomous_driving/window_size", 7);
     this->declare_parameter<int>("autonomous_driving/poly_order", 2);
+    this->declare_parameter<double>("autonomous_driving/param_m_Lookahead_distance", 1.5);
 
     //////////////////////////////////////////////////
     ProcessParams();
@@ -68,6 +70,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     RCLCPP_INFO(this->get_logger(), "param_pid_kd: %f", param_pid_kd_);
     RCLCPP_INFO(this->get_logger(), "window_size: %d", window_size);
     RCLCPP_INFO(this->get_logger(), "poly_order: %d", poly_order);
+    RCLCPP_INFO(this->get_logger(), "param_m_Lookahead_distance: %f", param_m_Lookahead_distance);
 
     // Subscriber init
     s_manual_input_ = this->create_subscription<ad_msgs::msg::VehicleCommand>(
@@ -112,6 +115,7 @@ void AutonomousDriving::ProcessParams() {
     this->get_parameter("autonomous_driving/eps", eps);
     this->get_parameter("autonomous_driving/x_weight", x_weight);
     this->get_parameter("autonomous_driving/min_points", min_points);
+    this->get_parameter("autonomous_driving/param_m_Lookahead_distance", param_m_Lookahead_distance);
     //////////////////////////////////////////////////
 }
 
@@ -122,9 +126,9 @@ double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geome
 }
 
 void AutonomousDriving::DetectLaneShift(double current_time_seconds, double current_center_offset, double lane_width, int &current_lane) {
-    // Check if 2 seconds have passed since the last lane shift
-    if ((current_time_seconds - last_lane_shift_time_) < 2.0) {
-        RCLCPP_INFO(this->get_logger(), "Lane shift detection disabled for 2 seconds after the last shift.");
+    // Check if sufficient time has passed since the last lane shift
+    if ((current_time_seconds - last_lane_shift_time_) < 0.5) {
+        // RCLCPP_INFO(this->get_logger(), "Lane shift detection disabled for 2 seconds after the last shift.");
         return;
     }
 
@@ -532,6 +536,18 @@ void AutonomousDriving::Run() {
     // RCLCPP_INFO(this->get_logger(), "Driving_way - a3: %f, a2: %f, a1: %f, a0: %f", driving_way.a3, driving_way.a2, driving_way.a1, driving_way.a0);
     RCLCPP_INFO(this->get_logger(), "Driving_way - a0: %f", driving_way.a0);
 
+    ////////////// Path Planning //////////////////
+
+    // Initialize boolean flags
+    b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
+    b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
+    b_is_icy_road = false;
+    b_is_up_slope = false;
+    b_is_down_slope = false;
+    b_left_merge = false;
+    b_right_merge = false;
+    b_is_merge_safe = true;
+
     // Calculate the derivative (slope) of the driving way polynomial at a specific point (e.g., x = 0)
     double x = 0.0; // You can choose any x value where you want to calculate the tangent
     double slope = 3 * driving_way.a3 * x * x + 2 * driving_way.a2 * x + driving_way.a1;
@@ -541,28 +557,15 @@ void AutonomousDriving::Run() {
     // smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
     double current_center_offset = driving_way.a0;
     target_lane_center = driving_way.a0;
-    // double world_angle = angle + ego_yaw; // Convert the driving way angle to the world frame
+    double world_angle = angle + ego_yaw; // Convert the driving way angle to the world frame
 
     // Smooth the centerline offset using exponential smoothing
     // smoothed_center_offset = stability_factor * prev_lane_center + (1.0 - stability_factor) * current_center_offset;
 
-
     // Detect lane shift
     DetectLaneShift(current_time_seconds, current_center_offset, lane_width, current_lane);
+    RCLCPP_INFO(this->get_logger(), "Ego position: x = %.2f, y = %.2f", ego_x, ego_y);
     RCLCPP_WARN(this->get_logger(), "Current Lane: %d", current_lane);
-
-    ////////////// Path Planning //////////////////
-
-    // Initialize boolean flags
-    // b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
-    b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
-    b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
-    b_is_icy_road = false;
-    b_is_up_slope = false;
-    b_is_down_slope = false;
-    b_left_merge = false;
-    b_right_merge = false;
-    b_is_merge_safe = true;
 
     // Vectors to store static and dynamic obstacles
     std::vector<ObstacleInfo> static_obstacles;
@@ -615,10 +618,10 @@ void AutonomousDriving::Run() {
     }
 
     // Calculate the y range based on driving_way.a0 and lane_width
-    double left_lane_y_min = -current_center_offset;
-    double left_lane_y_max = -current_center_offset + lane_width;
-    double right_lane_y_min = current_center_offset;
-    double right_lane_y_max = current_center_offset - lane_width;
+    double left_lane_y_min = (lane_width / 2.0) + current_center_offset;
+    double left_lane_y_max = (lane_width / 2.0) + current_center_offset + lane_width;
+    double right_lane_y_min = -(lane_width / 2.0) + current_center_offset;
+    double right_lane_y_max = -(lane_width / 2.0) + current_center_offset - lane_width;
 
     // Check which lane is safe to merge
     if (b_trigger_merge) {
@@ -628,7 +631,7 @@ void AutonomousDriving::Run() {
             if (obstacle.x_ego > 0) {  // Check if the obstacle is ahead
                 if (obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {  // Check if the obstacle is in the left lane
                     b_left_merge = false;
-                } else if (obstacle.y_ego > right_lane_y_min && obstacle.y_ego < right_lane_y_max) {  // Check if the obstacle is in the right lane
+                } else if (obstacle.y_ego < right_lane_y_min && obstacle.y_ego > right_lane_y_max) {  // Check if the obstacle is in the right lane
                     b_right_merge = false;
                 }
             }
@@ -681,7 +684,7 @@ void AutonomousDriving::Run() {
     lateral_error = driving_way.a3 * std::pow(param_m_Lookahead_distance, 3)
             + driving_way.a2 * std::pow(param_m_Lookahead_distance, 2)
             + driving_way.a1 * param_m_Lookahead_distance
-            + driving_way.a0;
+            + target_lane_center;
 
     // Apply the low-pass filter
     lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;

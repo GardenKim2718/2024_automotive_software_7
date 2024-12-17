@@ -40,6 +40,8 @@ Update
 
 2024-12-16  Updated Obstacle Detection & Classification
 
+2024-12-17  Updated path planning algorithm
+
 TO DO
 --------------
 Update the code to match Software Architecture Design

@@ -181,6 +181,8 @@ class AutonomousDriving : public rclcpp::Node {
         double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
         double flank_dist_x = 2.0;            // flank_dist : x-distance from the vehicle to consider within merge
         double flank_dist_y = 2.0;            // flank_dist : y-distance from the vehicle to consider within merge
+        double merge_start_x = 0.0;           // merge_start_x : x-coordinate to start merging
+        double merge_start_y = 0.0;           // merge_start_y : y-coordinate to start merging
 
         // Longitudinal Control
         double target_speed          = 10.0;
@@ -189,7 +191,7 @@ class AutonomousDriving : public rclcpp::Node {
         double speed_error_integral_ = 0.0;
         double speed_error_prev_     = 0.0;
         const double integral_max    = 4.0;          // for anti-windup
-        const double min_speed       = 3.0;          // minimum speed if steering exceeds steering_threshold
+        const double min_speed       = 5.0;          // minimum speed if steering exceeds steering_threshold
         const double interval        = 0.01;         // time interval in seconds (100Hz=0.01s)
 
         // Lateral Control
@@ -198,7 +200,7 @@ class AutonomousDriving : public rclcpp::Node {
         double last_lateral_error        = 0.0;
         const double max_steering_angle  = 0.35;
         const double alpha           = 0.5;
-        const double steering_threshold = 0.14;      // steering threshold for triggering deceleration
+        const double steering_threshold = 0.18;      // steering threshold for triggering deceleration
         const double pursuit_threshold   = 12.0;    // for obstacle scenario
         const double safe_distance       = 11.0;        
 };
