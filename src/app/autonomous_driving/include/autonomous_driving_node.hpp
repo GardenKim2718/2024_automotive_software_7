@@ -188,7 +188,8 @@ class AutonomousDriving : public rclcpp::Node {
 
         // Longitudinal Control
         double target_speed          = 10.0;
-        const double icy_speed       = 12.0;         // speed on icy road
+        double icy_speed       = 12.0;         // speed on icy road
+        double merge_speed     = 8.0;         // speed for lane merge
         double speed_error           = 0.0;          // PID error
         double speed_error_integral_ = 0.0;
         double speed_error_prev_     = 0.0;
@@ -196,7 +197,7 @@ class AutonomousDriving : public rclcpp::Node {
         const double curve_speed       = 5.0;          // minimum speed if steering exceeds steering_threshold
         double min_speed             = 0.0;          // minimum speed
         const double interval        = 0.01;         // time interval in seconds (100Hz=0.01s)
-        const double up_slope_compensation_factor = 0.2; // up_slope_compensation_factor : compensation factor for uphill
+        const double slope_compensation_factor = 0.1; // up_slope_compensation_factor : compensation factor for uphill
 
         // Lateral Control
         double param_m_Lookahead_distance = 0.8;     // look-ahead dist for pure pursuit

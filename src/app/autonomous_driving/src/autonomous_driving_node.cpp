@@ -56,6 +56,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter<double>("autonomous_driving/alpha", 0.5);
     this->declare_parameter<double>("autonomous_driving/lane_shift_threshold", 0.5);
     this->declare_parameter<double>("autonomous_driving/shift_distance", 2.0);
+    this->declare_parameter<double>("autonomous_driving/merge_speed", 8.0);
 
     //////////////////////////////////////////////////
     ProcessParams();
@@ -80,6 +81,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     RCLCPP_INFO(this->get_logger(), "alpha: %f", alpha);
     RCLCPP_INFO(this->get_logger(), "lane_shift_threshold: %f", lane_shift_threshold);
     RCLCPP_INFO(this->get_logger(), "shift_distance: %f", shift_distance);
+    RCLCPP_INFO(this->get_logger(), "merge_speed: %f", merge_speed);
 
     // Subscriber init
     s_manual_input_ = this->create_subscription<ad_msgs::msg::VehicleCommand>(
@@ -129,6 +131,7 @@ void AutonomousDriving::ProcessParams() {
     this->get_parameter("autonomous_driving/alpha", alpha);
     this->get_parameter("autonomous_driving/lane_shift_threshold", lane_shift_threshold);
     this->get_parameter("autonomous_driving/shift_distance", shift_distance);
+    this->get_parameter("autonomous_driving/merge_speed", merge_speed);
 }
 
 double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geometry_msgs::msg::Point& b, double x_weight) {
@@ -744,15 +747,26 @@ void AutonomousDriving::Run() {
         RCLCPP_INFO(this->get_logger(), "Icy Road Detected!!!");
     }
 
+    if (b_is_down_slope) { // If the road is downhill, apply deceleration
+        double slope_compensation = slope_compensation_factor * (current_vehicle_state.velocity - target_speed);
+
+        // Ensure compensation is only applied positively to prevent overshooting
+        slope_compensation = std::max(slope_compensation, 0.0);
+
+        // Adjust target speed to include compensation
+        target_speed = std::clamp(target_speed - slope_compensation, min_speed, limit_speed);
+        RCLCPP_INFO(this->get_logger(), "Down Slope Detected");
+    }
+
     if (b_is_up_slope) { // If the road is uphill, apply slope compensation
-        double slope_compensation = up_slope_compensation_factor * (target_speed - current_vehicle_state.velocity);
+        double slope_compensation = slope_compensation_factor * (target_speed - current_vehicle_state.velocity);
 
         // Ensure compensation is only applied positively to prevent overshooting
         slope_compensation = std::max(slope_compensation, 0.0);
 
         // Adjust target speed to include compensation
         target_speed = std::clamp(target_speed + slope_compensation, slope_compensation, limit_speed);
-        RCLCPP_INFO(this->get_logger(), "Up Slope Detected, Applying Compensation: %.2f", slope_compensation);
+        RCLCPP_INFO(this->get_logger(), "Up Slope Detected");
     }
 
     if (steering > steering_threshold || steering < -steering_threshold) { // If steering angle exceeds threshold, reduce speed
@@ -760,14 +774,19 @@ void AutonomousDriving::Run() {
         RCLCPP_INFO(this->get_logger(), "Steering Angle Exceeds Threshold");
     }
 
-    // If merge is necessary but not safe, apply brakes
-    if (b_trigger_merge && !b_is_merge_safe) {
-        target_speed = 0.0;
-        RCLCPP_INFO(this->get_logger(), "Merge Unsafe, Applying Brakes!!!");
+    if (b_trigger_merge) { // If merge is necessary, reduce speed
+        if(b_is_merge_safe) {
+        target_speed = std::min(target_speed, merge_speed);
+        RCLCPP_INFO(this->get_logger(), "Merge Triggered, Reducing Speed!!!");
+        }
+        else {  // If merge is necessary but not safe, apply brakes
+            target_speed = 0.0;
+            RCLCPP_INFO(this->get_logger(), "Merge Unsafe, Applying Brakes!!!");
+        }
     }
 
-    if (b_vehicle_behind) { // If a vehicle is behind, reduce speed
-        target_speed = std::max(target_speed, behind_vehicle_speed);
+    if (b_vehicle_behind) { // If a vehicle is behind, increase speed
+        target_speed = std::max(target_speed, behind_vehicle_speed + 0.5);
         RCLCPP_INFO(this->get_logger(), "Vehicle Behind Detected, evading!!!");
     }
 

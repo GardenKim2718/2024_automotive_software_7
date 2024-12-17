@@ -19,7 +19,8 @@
     <arg name="max_steering_angle" default="0.35"/>
     <arg name="alpha" default="0.5"/>
     <arg name="lane_shift_threshold" default="3.0"/>
-    <arg name="shift_distance" default="2.2"/>
+    <arg name="shift_distance" default="2.0"/>
+    <arg name="merge_speed" default="8.0"/>
 
     <node pkg="autonomous_driving" exec="autonomous_driving" name="autonomous_driving" namespace="$(var ns1)" output="screen">
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
@@ -41,5 +42,6 @@
         <param name="alpha" value="$(var alpha)"/>
         <param name="lane_shift_threshold" value="$(var lane_shift_threshold)"/>
         <param name="shift_distance" value="$(var shift_distance)"/>
+        <param name="merge_speed" value="$(var merge_speed)"/>
     </node>
 </launch>

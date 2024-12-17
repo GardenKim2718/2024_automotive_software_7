@@ -42,6 +42,8 @@ Update
 
 2024-12-17  Updated path planning algorithm
 
+2024-12-17  Updated lateral and longitudinal control algorithm
+
 TO DO
 --------------
 Update the code to match Software Architecture Design
