@@ -55,7 +55,7 @@ class AutonomousDriving : public rclcpp::Node {
     private:
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         // Functions     
-        
+        void detectLaneShift(double smoothed_center_offset, double lane_width, int &current_lane);
         // Callback functions   
         inline void CallbackManualInput(const ad_msgs::msg::VehicleCommand::SharedPtr msg) {
             std::lock_guard<std::mutex> lock(mutex_manual_input_);
@@ -168,6 +168,7 @@ class AutonomousDriving : public rclcpp::Node {
         bool b_left_merge = false;
         bool b_right_merge = false;
         bool b_is_merge_safe = true;
+        bool b_lane_shifted = false;
         int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
         bool b_return_to_center = false;            // trigger for returning to center lane
 

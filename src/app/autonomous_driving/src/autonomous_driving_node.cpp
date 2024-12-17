@@ -123,6 +123,20 @@ double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geome
     return std::sqrt(dx * dx + dy * dy);
 }
 
+void AutonomousDriving::detectLaneShift(double smoothed_center_offset, double lane_width, int &current_lane) {
+    if (smoothed_center_offset > (lane_width / 2.0)) {
+        current_lane += 1;
+        b_lane_shifted = true;
+        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Right!!!");
+    } else if (smoothed_center_offset < -(lane_width / 2.0)) {
+        current_lane -= 1;
+        b_lane_shifted = true;
+        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Left!!!");
+    } else {
+        b_lane_shifted = false;
+    }
+}
+
 // DBSCAN for lane point classification //
 std::vector<std::vector<geometry_msgs::msg::Point>> AutonomousDriving::dbscanClustering(
     const std::vector<geometry_msgs::msg::Point>& points, double eps, int min_points, double x_weight) {
@@ -500,21 +514,14 @@ void AutonomousDriving::Run() {
     smoothed_center_offset = stability_factor * prev_lane_center + (1.0 - stability_factor) * current_center_offset;
     prev_lane_center = smoothed_center_offset;
 
-    // Check if the ego vehicle has shifted lanes
-    if (smoothed_center_offset > (lane_width / 2.0)) {
-        current_lane = current_lane +1;
-        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Right!!!");
-    } else if (smoothed_center_offset < -(lane_width / 2.0)) {
-        current_lane = current_lane -1;
-        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Left!!!");
-    } else {
-        current_lane = current_lane;
-    }
+    // Detect lane shift
+    detectLaneShift(smoothed_center_offset, lane_width, current_lane);
+    RCLCPP_WARN(this->get_logger(), "Current Lane: %d", current_lane);
 
     ////////////// Path Planning //////////////////
 
     // Initialize boolean flags
-    b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
+    // b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
     b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
     b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
     b_is_icy_road = false;
@@ -576,6 +583,11 @@ void AutonomousDriving::Run() {
                 min_static_distance = obs_distance;
             }
         }
+    }
+
+    // Check if the ego vehicle has shifted lanes
+    if (b_lane_shifted) {
+        b_trigger_merge = false;
     }
 
     // Check which lane is safe to merge
@@ -713,8 +725,8 @@ void AutonomousDriving::Run() {
         vehicle_command.brake = 1.0;
     }
 
-    RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
-            vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
+    // RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
+    //         vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
 
     // If using manual input
     if (cfg_.use_manual_inputs == true) {
