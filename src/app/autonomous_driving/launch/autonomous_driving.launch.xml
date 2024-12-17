@@ -2,7 +2,7 @@
 <launch>
     <arg name="ns1" default="ego"/>
     <arg name="loop_rate_hz" default="100.0"/>
-    <arg name="use_manual_inputs" default="true"/>
+    <arg name="use_manual_inputs" default="false"/>
 
     <arg name="param_pp_kd" default="1.0"/>
     <arg name="param_pp_kv" default="0.05"/>
@@ -18,6 +18,8 @@
     <arg name="param_m_Lookahead_distance" default="1.5"/>
     <arg name="max_steering_angle" default="0.35"/>
     <arg name="alpha" default="0.5"/>
+    <arg name="lane_shift_threshold" default="3.0"/>
+    <arg name="shift_distance" default="2.2"/>
 
     <node pkg="autonomous_driving" exec="autonomous_driving" name="autonomous_driving" namespace="$(var ns1)" output="screen">
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
@@ -37,5 +39,7 @@
         <param name="param_m_Lookahead_distance" value="$(var param_m_Lookahead_distance)"/>
         <param name="max_steering_angle" value="$(var max_steering_angle)"/>
         <param name="alpha" value="$(var alpha)"/>
+        <param name="lane_shift_threshold" value="$(var lane_shift_threshold)"/>
+        <param name="shift_distance" value="$(var shift_distance)"/>
     </node>
 </launch>

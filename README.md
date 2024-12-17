@@ -52,6 +52,8 @@ Branch Description(Describe what this branch is made for)
 --------------
 Testing merge and obstacle avoidance algorithm
 
+Testing more control functionality
+
 May be buggy, still in test
 
 Comments

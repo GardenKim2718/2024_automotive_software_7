@@ -155,7 +155,6 @@ class AutonomousDriving : public rclcpp::Node {
 
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
         const double lane_width      = 4.0;          // lane_width : the width of lane
-        const double stability_factor = 0.8;        // Smoothing factor for detecting shifts
         bool b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
         bool b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
 
@@ -175,7 +174,8 @@ class AutonomousDriving : public rclcpp::Node {
 
         // Path Planning
         double smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
-        double lane_shift_threshold = 1.2;   // Threshold for lane shift
+        double lane_shift_threshold = 3.0;   // Threshold for lane shift
+        double shift_distance = 2.2;         // shift_distance : distance to shift the lane
         double prev_lane_center = 0.0;             // prev_lane_center : previous lane center
         double target_lane_center = 0.0;           // target_lane_center : target lane center
         double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
@@ -184,6 +184,7 @@ class AutonomousDriving : public rclcpp::Node {
         double merge_start_x = 0.0;           // merge_start_x : x-coordinate to start merging
         double merge_start_y = 0.0;           // merge_start_y : y-coordinate to start merging
         double merge_start_yaw = 0.0;         // merge_start_yaw : yaw angle to start merging
+        double behind_vehicle_speed = 0.0;    // behind_vehicle_speed : speed of the vehicle behind
 
         // Longitudinal Control
         double target_speed          = 10.0;
@@ -192,8 +193,10 @@ class AutonomousDriving : public rclcpp::Node {
         double speed_error_integral_ = 0.0;
         double speed_error_prev_     = 0.0;
         const double integral_max    = 4.0;          // for anti-windup
-        const double min_speed       = 5.0;          // minimum speed if steering exceeds steering_threshold
+        const double curve_speed       = 5.0;          // minimum speed if steering exceeds steering_threshold
+        double min_speed             = 0.0;          // minimum speed
         const double interval        = 0.01;         // time interval in seconds (100Hz=0.01s)
+        const double up_slope_compensation_factor = 0.2; // up_slope_compensation_factor : compensation factor for uphill
 
         // Lateral Control
         double param_m_Lookahead_distance = 0.8;     // look-ahead dist for pure pursuit
