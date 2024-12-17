@@ -24,34 +24,57 @@ find_package(std_msgs REQUIRED)
 find_package(ad_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(Eigen3 REQUIRED)  # For Eigen library
+find_package(geometry_msgs REQUIRED)
 
 ## Add include directories
 include_directories(
     include
     ${CMAKE_SOURCE_DIR}/../../bsw/system/interface
     ${CMAKE_SOURCE_DIR}/../../bsw/system/bridge
+    ${EIGEN3_INCLUDE_DIRS}  # Include Eigen headers
 )
 
-## Declare a C++ executable
-add_executable(${PROJECT_NAME}
+################################################################################
+# LaneProcessing Node
+################################################################################
+add_executable(lane_processing_node
+    src/lane_processing_node.cpp
+)
+
+ament_target_dependencies(lane_processing_node
+    rclcpp
+    ad_msgs
+    geometry_msgs
+    Eigen3
+)
+
+################################################################################
+# AutonomousDriving Node
+################################################################################
+add_executable(autonomous_driving_node
     src/autonomous_driving_node.cpp
 )
 
-## Link libraries to the executable
-target_link_libraries(${PROJECT_NAME}
-)
-
-## Add dependencies to the executable
-ament_target_dependencies(${PROJECT_NAME}
+ament_target_dependencies(autonomous_driving_node
     rclcpp
     std_msgs
     ad_msgs
     tf2
     tf2_ros
+    geometry_msgs
 )
 
-## Install the executable
-install(TARGETS ${PROJECT_NAME}
+################################################################################
+# Link libraries (if necessary)
+################################################################################
+target_link_libraries(lane_processing_node)
+target_link_libraries(autonomous_driving_node)
+
+################################################################################
+# Install executables
+################################################################################
+install(TARGETS lane_processing_node autonomous_driving_node
     DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch
@@ -63,6 +86,6 @@ install(PROGRAMS
 )
 
 ################################################################################
-# Find and load build settings from external packages
+# Package definition
 ################################################################################
 ament_package()
