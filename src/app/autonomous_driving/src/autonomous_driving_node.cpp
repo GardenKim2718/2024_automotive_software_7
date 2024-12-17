@@ -53,6 +53,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter<int>("autonomous_driving/poly_order", 2);
     this->declare_parameter<double>("autonomous_driving/param_m_Lookahead_distance", 1.5);
     this->declare_parameter<double>("autonomous_driving/max_steering_angle", 0.35);
+    this->declare_parameter<double>("autonomous_driving/merge_steering_limit", 0.43);
     this->declare_parameter<double>("autonomous_driving/alpha", 0.5);
     this->declare_parameter<double>("autonomous_driving/lane_shift_threshold", 0.5);
     this->declare_parameter<double>("autonomous_driving/shift_distance", 2.0);
@@ -78,6 +79,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     RCLCPP_INFO(this->get_logger(), "poly_order: %d", poly_order);
     RCLCPP_INFO(this->get_logger(), "param_m_Lookahead_distance: %f", param_m_Lookahead_distance);
     RCLCPP_INFO(this->get_logger(), "max_steering_angle: %f", max_steering_angle);
+    RCLCPP_INFO(this->get_logger(), "merge_steering_limit: %f", merge_steering_limit);
     RCLCPP_INFO(this->get_logger(), "alpha: %f", alpha);
     RCLCPP_INFO(this->get_logger(), "lane_shift_threshold: %f", lane_shift_threshold);
     RCLCPP_INFO(this->get_logger(), "shift_distance: %f", shift_distance);
@@ -128,6 +130,7 @@ void AutonomousDriving::ProcessParams() {
     this->get_parameter("autonomous_driving/min_points", min_points);
     this->get_parameter("autonomous_driving/param_m_Lookahead_distance", param_m_Lookahead_distance);
     this->get_parameter("autonomous_driving/max_steering_angle", max_steering_angle);
+    this->get_parameter("autonomous_driving/merge_steering_limit", merge_steering_limit);
     this->get_parameter("autonomous_driving/alpha", alpha);
     this->get_parameter("autonomous_driving/lane_shift_threshold", lane_shift_threshold);
     this->get_parameter("autonomous_driving/shift_distance", shift_distance);
@@ -726,7 +729,13 @@ void AutonomousDriving::Run() {
 
     // Use filtered_e_ for steering calculation
     double steering = atan((2 * param_pp_kd_ * lateral_error) / (param_pp_kv_ * current_vehicle_state.velocity + param_pp_kc_));
-    vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);
+
+    if (!b_trigger_merge) {
+        vehicle_command.steering = std::clamp(steering, -max_steering_angle, max_steering_angle);   
+    }
+    else {
+        vehicle_command.steering = std::clamp(steering, -merge_steering_limit, merge_steering_limit);
+    }
 
     // Longitudinal control: Calculate acceleration/brake based on PID
     if (min_dynamic_distance < 20.0) {  // Collision avoidance scenario

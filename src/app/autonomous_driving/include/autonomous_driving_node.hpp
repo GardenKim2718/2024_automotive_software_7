@@ -204,6 +204,7 @@ class AutonomousDriving : public rclcpp::Node {
         double lateral_error             = 0.0;
         double last_lateral_error        = 0.0;
         double max_steering_angle  = 0.35;
+        double merge_steering_limit = 0.43; // steering limit for lane merge
         double alpha           = 0.5;
         const double steering_threshold = 0.18;      // steering threshold for triggering deceleration
         const double pursuit_threshold   = 12.0;    // for obstacle scenario

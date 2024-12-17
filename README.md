@@ -26,9 +26,9 @@ Coding Guidelines
 6. Variable Naming:
 7. snake_case for all variables
 8. PascalCase for functions
-9. For constants, we are using snake_case for now, but maybe updated into SCREAMING_SNAKE_CASE after discussion
+9. ~~For constants, we are using snake_case for now, but maybe updated into SCREAMING_SNAKE_CASE after discussion~~ --> maintain snake_case
 10. Operators: follow the PDF examble
-11. For the MISRA-C, we may abide it in further coding, but for now we will not follow it as it requires massive changes including making new functions and code writing
+11. For the MISRA-C, we may abide it in later work, but for now we will not follow it as it requires massive changes including making new functions and code writing
 
 Update
 --------------
@@ -56,7 +56,7 @@ Testing merge and obstacle avoidance algorithm
 
 Testing more control functionality
 
-May be buggy, still in test
+May be buggy, still WIP
 
 Comments
 --------------
