@@ -40,6 +40,8 @@ Update
 
 2024-12-16  Updated Obstacle Detection & Classification
 
+2024-12-17  Updated path planning algorithm
+
 TO DO
 --------------
 Update the code to match Software Architecture Design
@@ -48,6 +50,9 @@ Implement path planning for merge
 
 Branch Description(Describe what this branch is made for)
 --------------
+Testing merge and obstacle avoidance algorithm
+
+May be buggy, still in test
 
 Comments
 --------------

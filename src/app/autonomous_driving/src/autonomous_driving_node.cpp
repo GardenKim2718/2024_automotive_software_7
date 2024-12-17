@@ -22,6 +22,7 @@
  * 2024-12-06 Chungwon Kim code fix and lane_fitting update
  * 2024-12-06 Chungwon Kim testing improved lane fitting algorithm
  * 2024-12-15 Chungwon Kim introduced DBSCAN algorithm and Savitzky-Golay filter within Lane Detection
+ * 2024-12-17 Chungwon Kim updated path planning algorithm
  */
 
 #include "autonomous_driving_node.hpp"
@@ -36,7 +37,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
     this->declare_parameter("autonomous_driving/use_manual_inputs", false);
-       
+    
     // Custom Parameters
     this->declare_parameter<double>("autonomous_driving/param_pp_kd", 1.0);
     this->declare_parameter<double>("autonomous_driving/param_pp_kv", 0.05);
@@ -49,18 +50,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter<int>("autonomous_driving/min_points", 3);
     this->declare_parameter<int>("autonomous_driving/window_size", 7);
     this->declare_parameter<int>("autonomous_driving/poly_order", 2);
-
-    this->get_parameter("autonomous_driving/param_pp_kd", param_pp_kd_);
-    this->get_parameter("autonomous_driving/param_pp_kv", param_pp_kv_);
-    this->get_parameter("autonomous_driving/param_pp_kc", param_pp_kc_);
-    this->get_parameter("autonomous_driving/param_pid_kp", param_pid_kp_);
-    this->get_parameter("autonomous_driving/param_pid_ki", param_pid_ki_);
-    this->get_parameter("autonomous_driving/param_pid_kd", param_pid_kd_);
-    this->get_parameter("autonomous_driving/window_size", window_size);
-    this->get_parameter("autonomous_driving/poly_order", poly_order);
-    this->get_parameter("autonomous_driving/eps", eps);
-    this->get_parameter("autonomous_driving/x_weight", x_weight);
-    this->get_parameter("autonomous_driving/min_points", min_points);
+    this->declare_parameter<double>("autonomous_driving/param_m_Lookahead_distance", 1.5);
 
     //////////////////////////////////////////////////
     ProcessParams();
@@ -80,6 +70,7 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     RCLCPP_INFO(this->get_logger(), "param_pid_kd: %f", param_pid_kd_);
     RCLCPP_INFO(this->get_logger(), "window_size: %d", window_size);
     RCLCPP_INFO(this->get_logger(), "poly_order: %d", poly_order);
+    RCLCPP_INFO(this->get_logger(), "param_m_Lookahead_distance: %f", param_m_Lookahead_distance);
 
     // Subscriber init
     s_manual_input_ = this->create_subscription<ad_msgs::msg::VehicleCommand>(
@@ -113,7 +104,18 @@ void AutonomousDriving::ProcessParams() {
     this->get_parameter("autonomous_driving/use_manual_inputs", cfg_.use_manual_inputs);
     ////////////////////// TODO //////////////////////
     // TODO: Add more parameters
-
+    this->get_parameter("autonomous_driving/param_pp_kd", param_pp_kd_);
+    this->get_parameter("autonomous_driving/param_pp_kv", param_pp_kv_);
+    this->get_parameter("autonomous_driving/param_pp_kc", param_pp_kc_);
+    this->get_parameter("autonomous_driving/param_pid_kp", param_pid_kp_);
+    this->get_parameter("autonomous_driving/param_pid_ki", param_pid_ki_);
+    this->get_parameter("autonomous_driving/param_pid_kd", param_pid_kd_);
+    this->get_parameter("autonomous_driving/window_size", window_size);
+    this->get_parameter("autonomous_driving/poly_order", poly_order);
+    this->get_parameter("autonomous_driving/eps", eps);
+    this->get_parameter("autonomous_driving/x_weight", x_weight);
+    this->get_parameter("autonomous_driving/min_points", min_points);
+    this->get_parameter("autonomous_driving/param_m_Lookahead_distance", param_m_Lookahead_distance);
     //////////////////////////////////////////////////
 }
 
@@ -121,6 +123,38 @@ double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geome
     double dx = (a.x - b.x) * x_weight; // Weight the x-dimension
     double dy = (a.y - b.y);            // Keep y-dimension as is
     return std::sqrt(dx * dx + dy * dy);
+}
+
+void AutonomousDriving::DetectLaneShift(double ego_x, double ego_y, double current_time_seconds, double lane_width, int &current_lane) {
+    // Check if 2 seconds have passed since the last lane shift
+    // if ((current_time_seconds - last_lane_shift_time_) < 2.0) {
+    //     RCLCPP_INFO(this->get_logger(), "Lane shift detection disabled for 2 seconds after the last shift.");
+    //     return;
+    // }
+
+    // Calculate the perpendicular distance from the current position to the line defined by merge_start_x, merge_start_y, and merge_start_yaw
+    double dx = ego_x - merge_start_x;
+    double dy = ego_y - merge_start_y;
+    double perpendicular_distance = -dx * std::sin(merge_start_yaw) + dy * std::cos(merge_start_yaw);
+    double lane_width_threshold = lane_width - 1.5; // Threshold for lane shift
+
+    // Check if the perpendicular distance is greater than the lane width
+    if (perpendicular_distance < -lane_width_threshold) {
+        current_lane += 1;
+        b_lane_shifted = true;
+        b_trigger_merge = false;
+        last_lane_shift_time_ = current_time_seconds; // Save the current time
+        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Right!!!");
+    } else if (perpendicular_distance > lane_width_threshold) {
+        current_lane -= 1;
+        b_lane_shifted = true;
+        b_trigger_merge = false;
+        last_lane_shift_time_ = current_time_seconds; // Save the current time
+        RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Left!!!");
+    }
+    else {
+        b_lane_shifted = false;
+    }
 }
 
 // DBSCAN for lane point classification //
@@ -217,6 +251,8 @@ std::vector<double> AutonomousDriving::applySavitzkyGolayFilter(const std::vecto
 
 void AutonomousDriving::Run() {
     auto current_time = this->now(); // current_time : Current time of the system, unit: seconds
+    double current_time_seconds = current_time.seconds(); // Convert to double
+
     RCLCPP_INFO_THROTTLE(this->get_logger(), *get_clock(), 1000, "Running ...");
     ProcessParams();
 
@@ -284,6 +320,11 @@ void AutonomousDriving::Run() {
     // TODO: Add lateral and longitudinal control algorithm
     interface::VehicleCommand vehicle_command;
 
+    // Extract ego vehicle's position
+    double ego_x = current_vehicle_state.x;
+    double ego_y = current_vehicle_state.y;
+    double ego_yaw = current_vehicle_state.yaw;
+
     ////////////// Lane Detection //////////////////
     std::vector<geometry_msgs::msg::Point> filtered_lane_points; // filtered_lane_points : List of lane points after filtering
 
@@ -295,7 +336,7 @@ void AutonomousDriving::Run() {
         filtered_lane_points.push_back(converted_point); // Add to filtered_lane_points
     }
 
-    RCLCPP_INFO(this->get_logger(), "Number of filtered points: %zu", filtered_lane_points.size());
+    // RCLCPP_INFO(this->get_logger(), "Number of filtered points: %zu", filtered_lane_points.size());
 
     // Sort points based on x-coordinates
     std::sort(filtered_lane_points.begin(), filtered_lane_points.end(), [](const auto& a, const auto& b) {
@@ -379,8 +420,8 @@ void AutonomousDriving::Run() {
     b_is_left_lane_empty = left_lane_points.empty();
     b_is_right_lane_empty = right_lane_points.empty();
 
-    RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
-    RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
+    // RCLCPP_INFO(this->get_logger(), "Right lane points: %zu", right_lane_points.size());
+    // RCLCPP_INFO(this->get_logger(), "Left lane points: %zu", left_lane_points.size());
 
     ////////////// Lane Fitting //////////////////
     //    With classified points, you can curve fit the lane and find the left, right lane.
@@ -495,20 +536,36 @@ void AutonomousDriving::Run() {
     ////////////// Path Planning //////////////////
 
     // Initialize boolean flags
-    b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
     b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
     b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
     b_is_icy_road = false;
     b_is_up_slope = false;
     b_is_down_slope = false;
-    b_left_merge = false;
-    b_right_merge = false;
+    b_left_merge = true;
+    b_right_merge = true;
     b_is_merge_safe = true;
 
-    // Extract ego vehicle's position
-    double ego_x = current_vehicle_state.x;
-    double ego_y = current_vehicle_state.y;
-    double ego_yaw = current_vehicle_state.yaw;
+    // Calculate the derivative (slope) of the driving way polynomial at a specific point (e.g., x = 0)
+    double x = 5.0; // You can choose any x value where you want to calculate the tangent
+    double slope = 3 * driving_way.a3 * x * x + 2 * driving_way.a2 * x + driving_way.a1;
+    // Convert the slope to an angle
+    double angle = std::atan(slope);
+
+    // smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
+    double current_center_offset = driving_way.a0;
+    target_lane_center = driving_way.a0;
+    double world_angle = angle + ego_yaw; // Convert the driving way angle to the world frame
+
+    // Smooth the centerline offset using exponential smoothing
+    // smoothed_center_offset = stability_factor * prev_lane_center + (1.0 - stability_factor) * current_center_offset;
+
+    // Detect lane shift
+    if(b_trigger_merge) {
+        RCLCPP_INFO(this->get_logger(), "Merge start: x = %.2f, y = %.2f, yaw = %.2f", merge_start_x, merge_start_y, merge_start_yaw);
+        DetectLaneShift(ego_x, ego_y ,current_time_seconds, lane_width, current_lane);
+    }
+    RCLCPP_INFO(this->get_logger(), "Ego position: x = %.2f, y = %.2f", ego_x, ego_y);
+    RCLCPP_WARN(this->get_logger(), "Current Lane: %d", current_lane);
 
     // Vectors to store static and dynamic obstacles
     std::vector<ObstacleInfo> static_obstacles;
@@ -544,20 +601,32 @@ void AutonomousDriving::Run() {
     double min_dynamic_distance = 100.0;
     double min_static_distance = 100.0;
     double obs_velocity = 35.0;
-    const double lane_width_threshold = (lane_width / 2.0) + 1.0; // Define a threshold for same lane detection
+    const double lane_width_threshold = (lane_width / 2.0) + 0.5; // Define a threshold for same lane detection
 
     // Detect obstacles in the same lane
     for (const auto& obstacle : static_obstacles) {
         double obs_distance = std::sqrt(std::pow(obstacle.x_ego, 2) + std::pow(obstacle.y_ego, 2));
-        if (obstacle.x_ego > 0 && std::abs(obstacle.y_ego) < lane_width_threshold) {  // Check if the obstacle is ahead and within the lane width
+        if (!b_trigger_merge && obstacle.x_ego > 0 && std::abs(obstacle.y_ego) < lane_width_threshold) {  // Check if the obstacle is ahead and within the lane width
             b_trigger_merge = true; // Trigger merge if there is a static obstacle ahead
             b_left_merge = true;
             b_right_merge = true;
+
+            // Store the current ego position and lane angle for merge start
+            merge_start_x = ego_x;
+            merge_start_y = ego_y;
+            merge_start_yaw = world_angle;
+            
             if (obs_distance < min_static_distance) {
                 min_static_distance = obs_distance;
             }
         }
     }
+
+    // Calculate the y range based on driving_way.a0 and lane_width
+    double left_lane_y_min = (lane_width / 2.0) + current_center_offset;
+    double left_lane_y_max = (lane_width / 2.0) + current_center_offset + lane_width;
+    double right_lane_y_min = -(lane_width / 2.0) + current_center_offset;
+    double right_lane_y_max = -(lane_width / 2.0) + current_center_offset - lane_width;
 
     // Check which lane is safe to merge
     if (b_trigger_merge) {
@@ -565,10 +634,12 @@ void AutonomousDriving::Run() {
 
         for (const auto& obstacle : static_obstacles) {
             if (obstacle.x_ego > 0) {  // Check if the obstacle is ahead
-                if (obstacle.y_ego > lane_width_threshold && obstacle.y_ego < 3 * lane_width_threshold) {  // Check if the obstacle is in the left lane
+                if (obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {  // Check if the obstacle is in the left lane
                     b_left_merge = false;
-                } else if (obstacle.y_ego < -lane_width_threshold && obstacle.y_ego > -3 * lane_width_threshold) {  // Check if the obstacle is in the right lane
+                    RCLCPP_INFO(this->get_logger(), "Obstacle in left lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
+                } else if (obstacle.y_ego < right_lane_y_min && obstacle.y_ego > right_lane_y_max) {  // Check if the obstacle is in the right lane
                     b_right_merge = false;
+                    RCLCPP_INFO(this->get_logger(), "Obstacle in right lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
                 }
             }
         }
@@ -584,11 +655,30 @@ void AutonomousDriving::Run() {
             }
         }
         // check if the merge is safe
-        if (b_left_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > lane_width_threshold && obstacle.y_ego < 3 * lane_width_threshold) {
+        if (b_trigger_merge && b_left_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {
             b_is_merge_safe = false;
         }
-        else if (b_right_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego < -lane_width_threshold && obstacle.y_ego > -3 * lane_width_threshold) {
+        else if (b_trigger_merge && b_right_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > right_lane_y_min && obstacle.y_ego < right_lane_y_max) {
             b_is_merge_safe = false;
+        }
+    }
+
+    // Check if a lane merge is triggered and safe to execute
+    if (b_trigger_merge && b_is_merge_safe) {
+        if (b_left_merge && !b_right_merge) {
+            // Shift to the left lane
+            RCLCPP_INFO(this->get_logger(), "Shifting to the LEFT lane...");
+            target_lane_center = target_lane_center + lane_width;  // Adjust the offset for left lane
+        } else if (b_right_merge && !b_left_merge) {
+            // Shift to the right lane
+            RCLCPP_INFO(this->get_logger(), "Shifting to the RIGHT lane...");
+            target_lane_center = target_lane_center - lane_width;  // Adjust the offset for right lane
+        } else if (b_left_merge && b_right_merge) {
+            // Both directions are available, prioritize the safer or mission-critical side
+            RCLCPP_INFO(this->get_logger(), "Both lanes available for merging, prioritizing LEFT...");
+            target_lane_center = target_lane_center + lane_width;  // Adjust the offset for left lane
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Merge triggered, but no safe lane available!");
         }
     }
 
@@ -601,7 +691,7 @@ void AutonomousDriving::Run() {
     lateral_error = driving_way.a3 * std::pow(param_m_Lookahead_distance, 3)
             + driving_way.a2 * std::pow(param_m_Lookahead_distance, 2)
             + driving_way.a1 * param_m_Lookahead_distance
-            + driving_way.a0;
+            + target_lane_center;
 
     // Apply the low-pass filter
     lateral_error = alpha * lateral_error + (1.0 - alpha) * last_lateral_error;
@@ -635,7 +725,7 @@ void AutonomousDriving::Run() {
         RCLCPP_INFO(this->get_logger(), "Steering Angle Exceeds Threshold");
     }
 
-    RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
+    // RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
 
     // Longitudinal Control
     speed_error = target_speed - current_vehicle_state.velocity;
@@ -658,13 +748,24 @@ void AutonomousDriving::Run() {
         vehicle_command.brake = -pidvalue_;
     }
 
-    RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
-            vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
+    // If merge is necessary but not safe, apply brakes
+    if (b_trigger_merge && !b_is_merge_safe) {
+        vehicle_command.accel = 0.0;
+        vehicle_command.brake = 1.0;
+    } else {
+        vehicle_command.accel = 0.0;
+        vehicle_command.brake = 0.0;
+    }
+
+    // RCLCPP_INFO(this->get_logger(), "Vehicle Command - Accel: %.2f, Brake: %.2f, Steering: %.2f",
+    //         vehicle_command.accel, vehicle_command.brake, vehicle_command.steering);
 
     // If using manual input
     if (cfg_.use_manual_inputs == true) {
         vehicle_command = manual_input;
     }
+
+    prev_lane_center = current_center_offset;
 
     // Publish output
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //

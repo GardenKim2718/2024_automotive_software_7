@@ -55,7 +55,7 @@ class AutonomousDriving : public rclcpp::Node {
     private:
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         // Functions     
-        
+        void DetectLaneShift(double ego_x, double ego_y, double current_time_seconds, double lane_width, int &current_lane);
         // Callback functions   
         inline void CallbackManualInput(const ad_msgs::msg::VehicleCommand::SharedPtr msg) {
             std::lock_guard<std::mutex> lock(mutex_manual_input_);
@@ -155,24 +155,35 @@ class AutonomousDriving : public rclcpp::Node {
 
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
         const double lane_width      = 4.0;          // lane_width : the width of lane
-        bool b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
+        const double stability_factor = 0.8;        // Smoothing factor for detecting shifts
         bool b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
         bool b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
 
         // Control Trigger
+        bool b_trigger_merge = false;               // b_trigger_merge : trigger for lane merge
         bool b_is_icy_road = false;
         bool b_is_up_slope = false;
         bool b_is_down_slope = false;
         bool b_left_merge = false;
         bool b_right_merge = false;
         bool b_is_merge_safe = true;
+        bool b_lane_shifted = false;
         int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
+        bool b_return_to_center = false;            // trigger for returning to center lane
+        bool b_vehicle_behind = false;              // trigger for vehicle behind
+        double last_lane_shift_time_ = 0.0;               // last_lane_shift_time : time of the last lane shift
 
         // Path Planning
+        double smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
+        double lane_shift_threshold = 1.2;   // Threshold for lane shift
         double prev_lane_center = 0.0;             // prev_lane_center : previous lane center
+        double target_lane_center = 0.0;           // target_lane_center : target lane center
         double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
         double flank_dist_x = 2.0;            // flank_dist : x-distance from the vehicle to consider within merge
         double flank_dist_y = 2.0;            // flank_dist : y-distance from the vehicle to consider within merge
+        double merge_start_x = 0.0;           // merge_start_x : x-coordinate to start merging
+        double merge_start_y = 0.0;           // merge_start_y : y-coordinate to start merging
+        double merge_start_yaw = 0.0;         // merge_start_yaw : yaw angle to start merging
 
         // Longitudinal Control
         double target_speed          = 10.0;
@@ -181,7 +192,7 @@ class AutonomousDriving : public rclcpp::Node {
         double speed_error_integral_ = 0.0;
         double speed_error_prev_     = 0.0;
         const double integral_max    = 4.0;          // for anti-windup
-        const double min_speed       = 3.0;          // minimum speed if steering exceeds steering_threshold
+        const double min_speed       = 5.0;          // minimum speed if steering exceeds steering_threshold
         const double interval        = 0.01;         // time interval in seconds (100Hz=0.01s)
 
         // Lateral Control
@@ -190,7 +201,7 @@ class AutonomousDriving : public rclcpp::Node {
         double last_lateral_error        = 0.0;
         const double max_steering_angle  = 0.35;
         const double alpha           = 0.5;
-        const double steering_threshold = 0.14;      // steering threshold for triggering deceleration
+        const double steering_threshold = 0.18;      // steering threshold for triggering deceleration
         const double pursuit_threshold   = 12.0;    // for obstacle scenario
         const double safe_distance       = 11.0;        
 };
