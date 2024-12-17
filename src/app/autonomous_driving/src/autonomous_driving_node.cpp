@@ -125,39 +125,36 @@ double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geome
     return std::sqrt(dx * dx + dy * dy);
 }
 
-void AutonomousDriving::DetectLaneShift(double current_time_seconds, double current_center_offset, double lane_width, int &current_lane) {
-    // Check if sufficient time has passed since the last lane shift
-    if ((current_time_seconds - last_lane_shift_time_) < 0.5) {
-        // RCLCPP_INFO(this->get_logger(), "Lane shift detection disabled for 2 seconds after the last shift.");
-        return;
-    }
+void AutonomousDriving::DetectLaneShift(double ego_x, double ego_y, double current_time_seconds, double lane_width, int &current_lane) {
+    // Check if 2 seconds have passed since the last lane shift
+    // if ((current_time_seconds - last_lane_shift_time_) < 2.0) {
+    //     RCLCPP_INFO(this->get_logger(), "Lane shift detection disabled for 2 seconds after the last shift.");
+    //     return;
+    // }
 
-    // Calculate the difference between the current center offset and the previous lane center
-    double offset_difference = current_center_offset - prev_lane_center;
+    // Calculate the perpendicular distance from the current position to the line defined by merge_start_x, merge_start_y, and merge_start_yaw
+    double dx = ego_x - merge_start_x;
+    double dy = ego_y - merge_start_y;
+    double perpendicular_distance = -dx * std::sin(merge_start_yaw) + dy * std::cos(merge_start_yaw);
+    double lane_width_threshold = lane_width - 1.5; // Threshold for lane shift
 
-    // Check if the offset difference indicates a lane shift to the left
-    if (offset_difference > lane_shift_threshold) {
+    // Check if the perpendicular distance is greater than the lane width
+    if (perpendicular_distance < -lane_width_threshold) {
         current_lane += 1;
         b_lane_shifted = true;
         b_trigger_merge = false;
         last_lane_shift_time_ = current_time_seconds; // Save the current time
         RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Right!!!");
-    } 
-    // Check if the offset difference indicates a lane shift to the right
-    else if (offset_difference < -lane_shift_threshold) {
+    } else if (perpendicular_distance > lane_width_threshold) {
         current_lane -= 1;
         b_lane_shifted = true;
         b_trigger_merge = false;
         last_lane_shift_time_ = current_time_seconds; // Save the current time
         RCLCPP_INFO(this->get_logger(), "Lane Shifted to the Left!!!");
     }
-    // No lane shift detected
     else {
         b_lane_shifted = false;
     }
-
-    // Update the previous lane center
-    prev_lane_center = current_center_offset;
 }
 
 // DBSCAN for lane point classification //
@@ -544,12 +541,12 @@ void AutonomousDriving::Run() {
     b_is_icy_road = false;
     b_is_up_slope = false;
     b_is_down_slope = false;
-    b_left_merge = false;
-    b_right_merge = false;
+    b_left_merge = true;
+    b_right_merge = true;
     b_is_merge_safe = true;
 
     // Calculate the derivative (slope) of the driving way polynomial at a specific point (e.g., x = 0)
-    double x = 0.0; // You can choose any x value where you want to calculate the tangent
+    double x = 5.0; // You can choose any x value where you want to calculate the tangent
     double slope = 3 * driving_way.a3 * x * x + 2 * driving_way.a2 * x + driving_way.a1;
     // Convert the slope to an angle
     double angle = std::atan(slope);
@@ -563,7 +560,10 @@ void AutonomousDriving::Run() {
     // smoothed_center_offset = stability_factor * prev_lane_center + (1.0 - stability_factor) * current_center_offset;
 
     // Detect lane shift
-    DetectLaneShift(current_time_seconds, current_center_offset, lane_width, current_lane);
+    if(b_trigger_merge) {
+        RCLCPP_INFO(this->get_logger(), "Merge start: x = %.2f, y = %.2f, yaw = %.2f", merge_start_x, merge_start_y, merge_start_yaw);
+        DetectLaneShift(ego_x, ego_y ,current_time_seconds, lane_width, current_lane);
+    }
     RCLCPP_INFO(this->get_logger(), "Ego position: x = %.2f, y = %.2f", ego_x, ego_y);
     RCLCPP_WARN(this->get_logger(), "Current Lane: %d", current_lane);
 
@@ -610,6 +610,11 @@ void AutonomousDriving::Run() {
             b_trigger_merge = true; // Trigger merge if there is a static obstacle ahead
             b_left_merge = true;
             b_right_merge = true;
+
+            // Store the current ego position and lane angle for merge start
+            merge_start_x = ego_x;
+            merge_start_y = ego_y;
+            merge_start_yaw = world_angle;
             
             if (obs_distance < min_static_distance) {
                 min_static_distance = obs_distance;
@@ -631,8 +636,10 @@ void AutonomousDriving::Run() {
             if (obstacle.x_ego > 0) {  // Check if the obstacle is ahead
                 if (obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {  // Check if the obstacle is in the left lane
                     b_left_merge = false;
+                    RCLCPP_INFO(this->get_logger(), "Obstacle in left lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
                 } else if (obstacle.y_ego < right_lane_y_min && obstacle.y_ego > right_lane_y_max) {  // Check if the obstacle is in the right lane
                     b_right_merge = false;
+                    RCLCPP_INFO(this->get_logger(), "Obstacle in right lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
                 }
             }
         }
@@ -648,10 +655,10 @@ void AutonomousDriving::Run() {
             }
         }
         // check if the merge is safe
-        if (b_left_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {
+        if (b_trigger_merge && b_left_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {
             b_is_merge_safe = false;
         }
-        else if (b_right_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > right_lane_y_min && obstacle.y_ego < right_lane_y_max) {
+        else if (b_trigger_merge && b_right_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > right_lane_y_min && obstacle.y_ego < right_lane_y_max) {
             b_is_merge_safe = false;
         }
     }

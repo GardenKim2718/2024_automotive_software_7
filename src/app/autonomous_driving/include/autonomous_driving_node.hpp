@@ -55,7 +55,7 @@ class AutonomousDriving : public rclcpp::Node {
     private:
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         // Functions     
-        void DetectLaneShift(double current_time_seconds, double current_center_offset, double lane_width, int &current_lane);
+        void DetectLaneShift(double ego_x, double ego_y, double current_time_seconds, double lane_width, int &current_lane);
         // Callback functions   
         inline void CallbackManualInput(const ad_msgs::msg::VehicleCommand::SharedPtr msg) {
             std::lock_guard<std::mutex> lock(mutex_manual_input_);
@@ -183,6 +183,7 @@ class AutonomousDriving : public rclcpp::Node {
         double flank_dist_y = 2.0;            // flank_dist : y-distance from the vehicle to consider within merge
         double merge_start_x = 0.0;           // merge_start_x : x-coordinate to start merging
         double merge_start_y = 0.0;           // merge_start_y : y-coordinate to start merging
+        double merge_start_yaw = 0.0;         // merge_start_yaw : yaw angle to start merging
 
         // Longitudinal Control
         double target_speed          = 10.0;
