@@ -18,8 +18,8 @@
 
     <node pkg="autonomous_driving" exec="autonomous_driving" name="autonomous_driving" namespace="$(var ns1)" output="screen">
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
-        <param name="loop_rate_hz" value="$(var loop_rate_hz)"/>
-        <param name="use_manual_inputs" value="$(var use_manual_inputs)"/>
+        <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
+        <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
         <param name="param_pp_kd" value="$(var param_pp_kd)"/>
         <param name="param_pp_kv" value="$(var param_pp_kv)"/>
         <param name="param_pp_kc" value="$(var param_pp_kc)"/>
