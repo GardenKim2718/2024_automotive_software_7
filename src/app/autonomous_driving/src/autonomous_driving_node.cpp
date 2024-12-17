@@ -51,6 +51,8 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     this->declare_parameter<int>("autonomous_driving/window_size", 7);
     this->declare_parameter<int>("autonomous_driving/poly_order", 2);
     this->declare_parameter<double>("autonomous_driving/param_m_Lookahead_distance", 1.5);
+    this->declare_parameter<double>("autonomous_driving/max_steering_angle", 0.35);
+    this->declare_parameter<double>("autonomous_driving/alpha", 0.5);
 
     //////////////////////////////////////////////////
     ProcessParams();
@@ -71,6 +73,8 @@ AutonomousDriving::AutonomousDriving(const std::string &node_name, const rclcpp:
     RCLCPP_INFO(this->get_logger(), "window_size: %d", window_size);
     RCLCPP_INFO(this->get_logger(), "poly_order: %d", poly_order);
     RCLCPP_INFO(this->get_logger(), "param_m_Lookahead_distance: %f", param_m_Lookahead_distance);
+    RCLCPP_INFO(this->get_logger(), "max_steering_angle: %f", max_steering_angle);
+    RCLCPP_INFO(this->get_logger(), "alpha: %f", alpha);
 
     // Subscriber init
     s_manual_input_ = this->create_subscription<ad_msgs::msg::VehicleCommand>(
@@ -116,7 +120,8 @@ void AutonomousDriving::ProcessParams() {
     this->get_parameter("autonomous_driving/x_weight", x_weight);
     this->get_parameter("autonomous_driving/min_points", min_points);
     this->get_parameter("autonomous_driving/param_m_Lookahead_distance", param_m_Lookahead_distance);
-    //////////////////////////////////////////////////
+    this->get_parameter("autonomous_driving/max_steering_angle", max_steering_angle);
+    this->get_parameter("autonomous_driving/alpha", alpha);
 }
 
 double weightedEuclideanDistance(const geometry_msgs::msg::Point& a, const geometry_msgs::msg::Point& b, double x_weight) {

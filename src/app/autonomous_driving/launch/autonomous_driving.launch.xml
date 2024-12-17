@@ -16,6 +16,8 @@
     <arg name="window_size" default="7"/>
     <arg name="poly_order" default="2"/>
     <arg name="param_m_Lookahead_distance" default="1.5"/>
+    <arg name="max_steering_angle" default="0.35"/>
+    <arg name="alpha" default="0.5"/>
 
     <node pkg="autonomous_driving" exec="autonomous_driving" name="autonomous_driving" namespace="$(var ns1)" output="screen">
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
@@ -33,5 +35,7 @@
         <param name="window_size" value="$(var window_size)"/>
         <param name="poly_order" value="$(var poly_order)"/>
         <param name="param_m_Lookahead_distance" value="$(var param_m_Lookahead_distance)"/>
+        <param name="max_steering_angle" value="$(var max_steering_angle)"/>
+        <param name="alpha" value="$(var alpha)"/>
     </node>
 </launch>
