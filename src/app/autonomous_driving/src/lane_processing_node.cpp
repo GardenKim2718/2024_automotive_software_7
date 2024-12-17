@@ -23,8 +23,7 @@ LaneProcessingNode::LaneProcessingNode(const std::string& node_name, const rclcp
         "lane_points", 10, std::bind(&LaneProcessingNode::CallbackSensorData, this, std::placeholders::_1));
 
     // Publisher
-    p_poly_lanes_ = this->create_publisher<ad_msgs::msg::PolyfitLaneDataArray>(
-        "poly_lanes", 10);
+    p_poly_lanes_ = this->create_publisher<ad_msgs::msg::PolyfitLaneDataArray>("poly_lanes", 10);
 
     RCLCPP_INFO(this->get_logger(), "LaneProcessingNode initialized.");
 }
@@ -48,7 +47,6 @@ void LaneProcessingNode::CallbackSensorData(const ad_msgs::msg::LanePointData::S
     auto left_clusters = dbscanClustering(left_lane, eps_, min_points_, x_weight_);
     auto right_clusters = dbscanClustering(right_lane, eps_, min_points_, x_weight_);
 
-    // Extract Largest Clusters
     auto getLargestCluster = [](const auto& clusters) {
         if (!clusters.empty()) {
             return *std::max_element(clusters.begin(), clusters.end(), [](const auto& a, const auto& b) {
@@ -58,13 +56,9 @@ void LaneProcessingNode::CallbackSensorData(const ad_msgs::msg::LanePointData::S
         return std::vector<geometry_msgs::msg::Point>{};
     };
 
-    std::vector<geometry_msgs::msg::Point> largest_left = getLargestCluster(left_clusters);
-    std::vector<geometry_msgs::msg::Point> largest_right = getLargestCluster(right_clusters);
-
-    // Smooth Points with Savitzky-Golay Filter
     auto kernel = generateSavitzkyGolayKernel(window_size_, poly_order_);
 
-    auto smoothPoints = [&](const auto& points) {
+    auto smoothPoints = [&](const std::vector<geometry_msgs::msg::Point>& points) {
         std::vector<double> x, y;
         for (const auto& point : points) {
             x.push_back(point.x);
@@ -83,36 +77,41 @@ void LaneProcessingNode::CallbackSensorData(const ad_msgs::msg::LanePointData::S
         return smoothed_points;
     };
 
-    largest_left = smoothPoints(largest_left);
-    largest_right = smoothPoints(largest_right);
+    auto largest_left = smoothPoints(getLargestCluster(left_clusters));
+    auto largest_right = smoothPoints(getLargestCluster(right_clusters));
 
     // Polynomial Fitting
     auto left_coeffs = fitPolynomial(largest_left, 2);
     auto right_coeffs = fitPolynomial(largest_right, 2);
+    Eigen::VectorXd driving_way_coeffs = (left_coeffs + right_coeffs) / 2.0;
 
     // Publish PolyfitLaneDataArray
     ad_msgs::msg::PolyfitLaneDataArray poly_lanes_msg;
     poly_lanes_msg.frame_id = "lane_frame";
 
-    ad_msgs::msg::PolyfitLaneData left_lane_data, right_lane_data;
+    ad_msgs::msg::PolyfitLaneData left_lane_data, right_lane_data, driving_way_data;
+
     left_lane_data.id = "1";
     left_lane_data.a0 = left_coeffs(0);
     left_lane_data.a1 = left_coeffs(1);
     left_lane_data.a2 = left_coeffs(2);
-    left_lane_data.a3 = 0.0;
 
     right_lane_data.id = "2";
     right_lane_data.a0 = right_coeffs(0);
     right_lane_data.a1 = right_coeffs(1);
     right_lane_data.a2 = right_coeffs(2);
-    right_lane_data.a3 = 0.0;
+
+    driving_way_data.id = "center";
+    driving_way_data.a0 = driving_way_coeffs(0);
+    driving_way_data.a1 = driving_way_coeffs(1);
+    driving_way_data.a2 = driving_way_coeffs(2);
 
     poly_lanes_msg.polyfitlanes.push_back(left_lane_data);
     poly_lanes_msg.polyfitlanes.push_back(right_lane_data);
+    poly_lanes_msg.polyfitlanes.push_back(driving_way_data);
 
     p_poly_lanes_->publish(poly_lanes_msg);
-
-    RCLCPP_INFO(this->get_logger(), "Published poly lanes with left and right coefficients.");
+    RCLCPP_INFO(this->get_logger(), "Published left, right, and center driving lanes.");
 }
 
 std::vector<std::vector<geometry_msgs::msg::Point>> LaneProcessingNode::dbscanClustering(
