@@ -6,7 +6,6 @@
 #include <eigen3/Eigen/Dense>
 #include <rclcpp/rclcpp.hpp>
 #include "ad_msgs/msg/lane_point_data.hpp"
-#include "ad_msgs/msg/polyfit_lane_data.hpp"
 #include "ad_msgs/msg/polyfit_lane_data_array.hpp"
 
 class LaneProcessingNode : public rclcpp::Node {
@@ -15,7 +14,8 @@ public:
     ~LaneProcessingNode() = default;
 
 private:
-    void CallbackLanePoints(const ad_msgs::msg::LanePointData::SharedPtr msg);
+    // Callback Functions
+    void CallbackSensorData(const ad_msgs::msg::LanePointData::SharedPtr msg);
 
     // Lane Detection and Clustering
     std::vector<std::vector<geometry_msgs::msg::Point>> dbscanClustering(
@@ -27,7 +27,7 @@ private:
     Eigen::VectorXd fitPolynomial(const std::vector<geometry_msgs::msg::Point>& points, int order);
 
     // Subscribers and Publishers
-    rclcpp::Subscription<ad_msgs::msg::LanePointData>::SharedPtr s_lane_points_;
+    rclcpp::Subscription<ad_msgs::msg::LanePointData>::SharedPtr s_sensor_data_;
     rclcpp::Publisher<ad_msgs::msg::PolyfitLaneDataArray>::SharedPtr p_poly_lanes_;
 
     // Parameters
