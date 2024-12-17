@@ -55,7 +55,7 @@ class AutonomousDriving : public rclcpp::Node {
     private:
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - //
         // Functions     
-        void detectLaneShift(double smoothed_center_offset, double lane_width, int &current_lane);
+        void DetectLaneShift(double current_time_seconds, double current_center_offset, double lane_width, int &current_lane);
         // Callback functions   
         inline void CallbackManualInput(const ad_msgs::msg::VehicleCommand::SharedPtr msg) {
             std::lock_guard<std::mutex> lock(mutex_manual_input_);
@@ -155,13 +155,12 @@ class AutonomousDriving : public rclcpp::Node {
 
         const double lane_threshold  = 1.5;          // lane_threshold : Threshold for classifying points as left or right lane
         const double lane_width      = 4.0;          // lane_width : the width of lane
-        const double lane_shift_threshold = lane_width / 2.0; // lane_shift_threshold : Threshold for lane shift
         const double stability_factor = 0.8;        // Smoothing factor for detecting shifts
-        bool b_trigger_merge = false;                // b_trigger_merge : trigger for lane merge
         bool b_is_left_lane_empty = true;           // b_is_left_lane_empty : left lane is empty
         bool b_is_right_lane_empty = true;          // b_is_right_lane_empty : right lane is empty
 
         // Control Trigger
+        bool b_trigger_merge = false;               // b_trigger_merge : trigger for lane merge
         bool b_is_icy_road = false;
         bool b_is_up_slope = false;
         bool b_is_down_slope = false;
@@ -171,9 +170,12 @@ class AutonomousDriving : public rclcpp::Node {
         bool b_lane_shifted = false;
         int current_lane             = 0;           // current driving lane ID; left=-1; middle=0; right=1
         bool b_return_to_center = false;            // trigger for returning to center lane
+        bool b_vehicle_behind = false;              // trigger for vehicle behind
+        double last_lane_shift_time_ = 0.0;               // last_lane_shift_time : time of the last lane shift
 
         // Path Planning
         double smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
+        double lane_shift_threshold = 1.2;   // Threshold for lane shift
         double prev_lane_center = 0.0;             // prev_lane_center : previous lane center
         double target_lane_center = 0.0;           // target_lane_center : target lane center
         double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
