@@ -44,11 +44,13 @@ Update
 
 2024-12-17  Updated lateral and longitudinal control algorithm
 
+2024-12-18  Final Version (Submitted)
+
 TO DO
 --------------
-Update the code to match Software Architecture Design
+~~Update the code to match Software Architecture Design~~
 
-Implement path planning for merge
+~~Implement path planning for merge~~
 
 Branch Description(Describe what this branch is made for)
 --------------
