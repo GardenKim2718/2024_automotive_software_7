@@ -2,7 +2,7 @@
 <launch>
     <arg name="ns1" default="ego"/>
     <arg name="loop_rate_hz" default="100.0"/>
-    <arg name="use_manual_inputs" default="true"/>
+    <arg name="use_manual_inputs" default="false"/>
 
     <arg name="param_pp_kd" default="1.0"/>
     <arg name="param_pp_kv" default="0.05"/>
@@ -15,7 +15,13 @@
     <arg name="min_points" default="3"/>
     <arg name="window_size" default="7"/>
     <arg name="poly_order" default="2"/>
-    <arg name="param_m_Lookahead_distance" default="1.5"/>
+    <arg name="param_m_Lookahead_distance" default="3.0"/>
+    <arg name="max_steering_angle" default="0.35"/>
+    <arg name="merge_steering_limit" default="0.35"/>
+    <arg name="alpha" default="0.3"/>
+    <arg name="lane_shift_threshold" default="2.5"/>
+    <arg name="shift_distance" default="2.0"/>
+    <arg name="merge_speed" default="8.0"/>
 
     <node pkg="autonomous_driving" exec="autonomous_driving" name="autonomous_driving" namespace="$(var ns1)" output="screen">
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
@@ -33,5 +39,11 @@
         <param name="window_size" value="$(var window_size)"/>
         <param name="poly_order" value="$(var poly_order)"/>
         <param name="param_m_Lookahead_distance" value="$(var param_m_Lookahead_distance)"/>
+        <param name="max_steering_angle" value="$(var max_steering_angle)"/>
+        <param name="merge_steering_limit" value="$(var merge_steering_limit)"/>
+        <param name="alpha" value="$(var alpha)"/>
+        <param name="lane_shift_threshold" value="$(var lane_shift_threshold)"/>
+        <param name="shift_distance" value="$(var shift_distance)"/>
+        <param name="merge_speed" value="$(var merge_speed)"/>
     </node>
 </launch>
