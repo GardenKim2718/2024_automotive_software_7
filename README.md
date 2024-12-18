@@ -46,6 +46,8 @@ Update
 
 2024-12-18  Final Version (Submitted)
 
+2024-12-18  Changed Repository as Public Repository (After Submission)
+
 TO DO
 --------------
 ~~Update the code to match Software Architecture Design~~
