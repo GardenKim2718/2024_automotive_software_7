@@ -643,25 +643,25 @@ void AutonomousDriving::Run() {
     if (b_trigger_merge) {
         RCLCPP_INFO(this->get_logger(), "Merge Triggered!!!");
 
-        // Disable left merge if current lane is -1
-        if (current_lane == -1) {
+        if (current_lane == -1) { // Disable left merge if current lane is -1
             b_left_merge = false;
+            b_right_merge = true;
         }
-
-        // Disable right merge if current lane is 1
-        if (current_lane == 1) {
+        else if (current_lane == 1) {  // Disable right merge if current lane is 1
+            b_left_merge = true;
             b_right_merge = false;
         }
-
-        for (const auto& obstacle : static_obstacles) {
-            if (obstacle.x_ego > 0) {  // Check if the obstacle is ahead
-                if (obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {  // Check if the obstacle is in the left lane
-                    b_left_merge = false;
-                    RCLCPP_INFO(this->get_logger(), "Obstacle in left lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
-                }
-                else if (obstacle.y_ego < right_lane_y_min && obstacle.y_ego > right_lane_y_max) {  // Check if the obstacle is in the right lane
-                    b_right_merge = false;
-                    RCLCPP_INFO(this->get_logger(), "Obstacle in right lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
+        else{
+            for (const auto& obstacle : static_obstacles) {
+                if (obstacle.x_ego > 0) {  // Check if the obstacle is ahead
+                    if (obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {  // Check if the obstacle is in the left lane
+                        b_left_merge = false;
+                        RCLCPP_INFO(this->get_logger(), "Obstacle in left lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
+                    }
+                    else if (obstacle.y_ego < right_lane_y_min && obstacle.y_ego > right_lane_y_max) {  // Check if the obstacle is in the right lane
+                        b_right_merge = false;
+                        RCLCPP_INFO(this->get_logger(), "Obstacle in right lane: x_ego = %.2f, y_ego = %.2f", obstacle.x_ego, obstacle.y_ego);
+                    }
                 }
             }
         }
@@ -684,11 +684,19 @@ void AutonomousDriving::Run() {
             }
         }
         // check if the merge is safe
-        if (b_trigger_merge && b_left_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {
-            b_is_merge_safe = false;
-        }
-        else if (b_trigger_merge && b_right_merge && obstacle.x_ego < flank_dist_x && obstacle.y_ego > right_lane_y_min && obstacle.y_ego < right_lane_y_max) {
-            b_is_merge_safe = false;
+        if (b_trigger_merge){
+            if (b_left_merge && obstacle.x_ego < flank_dist_x && obstacle.x_ego > -cutting_dist && obstacle.y_ego > left_lane_y_min && obstacle.y_ego < left_lane_y_max) {
+                b_is_merge_safe = false;
+                merge_start_x = ego_x;
+                merge_start_y = ego_y;
+                merge_start_yaw = world_angle;
+            }
+            else if (b_right_merge && obstacle.x_ego < flank_dist_x && obstacle.x_ego > -cutting_dist && obstacle.y_ego < right_lane_y_min && obstacle.y_ego > right_lane_y_max) {
+                b_is_merge_safe = false;
+                merge_start_x = ego_x;
+                merge_start_y = ego_y;
+                merge_start_yaw = world_angle;
+            }
         }
     }
 
@@ -767,6 +775,17 @@ void AutonomousDriving::Run() {
         RCLCPP_INFO(this->get_logger(), "Down Slope Detected");
     }
 
+    if (limit_speed < 12.0) { // If the speed limit is less than 12 m/s, reduce the target speed
+        double slope_compensation = slope_compensation_factor * (current_vehicle_state.velocity - target_speed);
+
+        // Ensure compensation is only applied positively to prevent overshooting
+        slope_compensation = std::max(slope_compensation, 0.0);
+
+        // Adjust target speed to include compensation
+        target_speed = std::clamp(target_speed - slope_compensation, min_speed, limit_speed);
+        RCLCPP_INFO(this->get_logger(), "Speed limit zone, Applying Additional Compensation: %.2f", slope_compensation);
+    }
+
     if (b_is_up_slope) { // If the road is uphill, apply slope compensation
         double slope_compensation = slope_compensation_factor * (target_speed - current_vehicle_state.velocity);
 
@@ -792,9 +811,8 @@ void AutonomousDriving::Run() {
             target_speed = std::min(target_speed, merge_speed);
             RCLCPP_INFO(this->get_logger(), "Merge Triggered, Reducing Speed!!!");
             }
-            else {  // If merge is necessary but not safe, apply brakes
+            else {  // If merge is necessary but not safe, halt the vehicle
                 target_speed = 0.0;
-                RCLCPP_INFO(this->get_logger(), "Merge Unsafe, Applying Brakes!!!");
             }
         }
     }
@@ -805,6 +823,7 @@ void AutonomousDriving::Run() {
     }
 
     RCLCPP_INFO(this->get_logger(), "Target speed: %.2f", target_speed);
+    RCLCPP_INFO(this->get_logger(), "Current speed: %.2f", current_vehicle_state.velocity);
 
     // Longitudinal Control
     speed_error = target_speed - current_vehicle_state.velocity;
@@ -825,6 +844,13 @@ void AutonomousDriving::Run() {
     else{
         vehicle_command.accel = 0.0;
         vehicle_command.brake = -pidvalue_;
+    }
+
+    if(min_static_distance < emergency_braking_dist && !b_is_merge_safe) {
+        // Emergency braking
+        RCLCPP_INFO(this->get_logger(), "Emergency Braking: Distance, %.2f", min_static_distance);
+        vehicle_command.accel = 0.0;
+        vehicle_command.brake = 1.0;
     }
 
     // RCLCPP_INFO(this->get_logger(), "Accel: %.2f, Brake: %.2f, Steering: %.2f",

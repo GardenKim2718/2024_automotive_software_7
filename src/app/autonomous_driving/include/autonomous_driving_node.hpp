@@ -134,7 +134,8 @@ class AutonomousDriving : public rclcpp::Node {
         double param_pid_kp_ = 5.0;
         double param_pid_ki_ = 0.002;
         double param_pid_kd_ = 0.01;
-        double param_brake_ratio_ = 1.2;
+        // double param_brake_ratio_ = 1.2;
+        double param_brake_ratio_ = 2.0;
 
         double param_m_ROIFront_param = 20.0;
         double param_m_ROIRear_param = 10.0;
@@ -180,11 +181,12 @@ class AutonomousDriving : public rclcpp::Node {
         double obs_look_ahead_dist = 8.0;     // obs_look_ahead_dist : look-ahead distance for obstacle avoidance
         double flank_dist_x = 2.0;            // flank_dist : x-distance from the vehicle to consider within merge
         double flank_dist_y = 2.0;            // flank_dist : y-distance from the vehicle to consider within merge
+        double cutting_dist = 16.0;           // cutting_dist : distance for cutting in front of the vehicle
         double merge_start_x = 0.0;           // merge_start_x : x-coordinate to start merging
         double merge_start_y = 0.0;           // merge_start_y : y-coordinate to start merging
         double merge_start_yaw = 0.0;         // merge_start_yaw : yaw angle to start merging
         double behind_vehicle_speed = 0.0;    // behind_vehicle_speed : speed of the vehicle behind
-        double emergency_braking_dist = 12.0; // emergency_braking_dist : distance for emergency braking in obstacle avoidance
+        double emergency_braking_dist = 16.0; // emergency_braking_dist : distance for emergency braking in obstacle avoidance
 
         // Longitudinal Control
         double target_speed          = 10.0;
