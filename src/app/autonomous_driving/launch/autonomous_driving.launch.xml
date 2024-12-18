@@ -16,9 +16,9 @@
     <arg name="window_size" default="7"/>
     <arg name="poly_order" default="2"/>
     <arg name="param_m_Lookahead_distance" default="1.5"/>
-    <arg name="max_steering_angle" default="0.35"/>
-    <arg name="merge_steering_limit" default="0.39"/>
-    <arg name="alpha" default="0.5"/>
+    <arg name="max_steering_angle" default="0.37"/>
+    <arg name="merge_steering_limit" default="0.37"/>
+    <arg name="alpha" default="0.3"/>
     <arg name="lane_shift_threshold" default="3.0"/>
     <arg name="shift_distance" default="2.0"/>
     <arg name="merge_speed" default="8.0"/>

@@ -569,6 +569,12 @@ void AutonomousDriving::Run() {
     target_lane_center = driving_way.a0;
     double world_angle = angle + ego_yaw; // Convert the driving way angle to the world frame
 
+    // Calculate the y range based on driving_way.a0 and lane_width
+    double left_lane_y_min = (lane_width / 2.0) + current_center_offset;
+    double left_lane_y_max = (lane_width / 2.0) + current_center_offset + lane_width;
+    double right_lane_y_min = -(lane_width / 2.0) + current_center_offset;
+    double right_lane_y_max = -(lane_width / 2.0) + current_center_offset - lane_width;
+
     // Detect lane shift
     if(b_trigger_merge) {
         RCLCPP_INFO(this->get_logger(), "Merge start: x = %.2f, y = %.2f, yaw = %.2f", merge_start_x, merge_start_y, merge_start_yaw);
@@ -617,7 +623,7 @@ void AutonomousDriving::Run() {
     // Detect obstacles in the same lane
     for (const auto& obstacle : static_obstacles) {
         double obs_distance = std::sqrt(std::pow(obstacle.x_ego, 2) + std::pow(obstacle.y_ego, 2));
-        if (!b_trigger_merge && obstacle.x_ego > 0 && std::abs(obstacle.y_ego) < lane_width_threshold) {  // Check if the obstacle is ahead and within the lane width
+        if (!b_trigger_merge && obstacle.x_ego > 0 && obstacle.y_ego < left_lane_y_min && obstacle.y_ego > right_lane_y_min) {  // Check if the obstacle is ahead and within the lane width
             b_trigger_merge = true; // Trigger merge if there is a static obstacle ahead
             b_left_merge = true;
             b_right_merge = true;
@@ -632,12 +638,6 @@ void AutonomousDriving::Run() {
             }
         }
     }
-
-    // Calculate the y range based on driving_way.a0 and lane_width
-    double left_lane_y_min = (lane_width / 2.0) + current_center_offset;
-    double left_lane_y_max = (lane_width / 2.0) + current_center_offset + lane_width;
-    double right_lane_y_min = -(lane_width / 2.0) + current_center_offset;
-    double right_lane_y_max = -(lane_width / 2.0) + current_center_offset - lane_width;
 
     // Check which lane is safe to merge
     if (b_trigger_merge) {
@@ -784,13 +784,18 @@ void AutonomousDriving::Run() {
     }
 
     if (b_trigger_merge) { // If merge is necessary, reduce speed
-        if(b_is_merge_safe) {
-        target_speed = std::min(target_speed, merge_speed);
-        RCLCPP_INFO(this->get_logger(), "Merge Triggered, Reducing Speed!!!");
+        if (min_static_distance < emergency_braking_dist) {
+            target_speed = braking_speed;
         }
-        else {  // If merge is necessary but not safe, apply brakes
-            target_speed = 0.0;
-            RCLCPP_INFO(this->get_logger(), "Merge Unsafe, Applying Brakes!!!");
+        else {
+            if(b_is_merge_safe) {
+            target_speed = std::min(target_speed, merge_speed);
+            RCLCPP_INFO(this->get_logger(), "Merge Triggered, Reducing Speed!!!");
+            }
+            else {  // If merge is necessary but not safe, apply brakes
+                target_speed = 0.0;
+                RCLCPP_INFO(this->get_logger(), "Merge Unsafe, Applying Brakes!!!");
+            }
         }
     }
 

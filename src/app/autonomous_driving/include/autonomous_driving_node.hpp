@@ -173,7 +173,6 @@ class AutonomousDriving : public rclcpp::Node {
         double last_lane_shift_time_ = 0.0;               // last_lane_shift_time : time of the last lane shift
 
         // Path Planning
-        double smoothed_center_offset = 0.0; // Smoothed value of driving_way.a0
         double lane_shift_threshold = 3.0;   // Threshold for lane shift
         double shift_distance = 2.2;         // shift_distance : distance to shift the lane
         double prev_lane_center = 0.0;             // prev_lane_center : previous lane center
@@ -185,11 +184,13 @@ class AutonomousDriving : public rclcpp::Node {
         double merge_start_y = 0.0;           // merge_start_y : y-coordinate to start merging
         double merge_start_yaw = 0.0;         // merge_start_yaw : yaw angle to start merging
         double behind_vehicle_speed = 0.0;    // behind_vehicle_speed : speed of the vehicle behind
+        double emergency_braking_dist = 12.0; // emergency_braking_dist : distance for emergency braking in obstacle avoidance
 
         // Longitudinal Control
         double target_speed          = 10.0;
         double icy_speed       = 12.0;         // speed on icy road
         double merge_speed     = 8.0;         // speed for lane merge
+        double braking_speed   = 3.5;         // speed for emergency braking
         double speed_error           = 0.0;          // PID error
         double speed_error_integral_ = 0.0;
         double speed_error_prev_     = 0.0;
